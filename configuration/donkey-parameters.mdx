@@ -1,7 +1,7 @@
 ---
-title: "Donkey Initial Parameters in the JSON File"
+title: "Donkey Starting Parameters: Energy, Health, and Resources"
 sidebarTitle: "Donkey Parameters"
-description: "Configure the donkey's starting energy, health state, grass reserves, and age via top-level fields in the constellation JSON. Learn how each value affects the simulation."
+description: "Configure the donkey's energy, health state, grass, and starting age in the JSON file. Each parameter directly affects simulation difficulty and survival."
 ---
 
 The donkey's starting state is fully controlled by four top-level fields in the constellation JSON. Changing these values lets you tune difficulty — a donkey with low starting energy or grass will exhaust its reserves quickly on a long path, while generous starting values allow exploration of the entire graph. All four fields are read once at initialization time by `ViewDonkey._initialize_donkey()`, and sensible defaults are applied if any field is missing.
@@ -79,7 +79,7 @@ Use these starting configurations as a baseline and adjust from there:
 }
 ```
 
-On a hard run, every edge choice matters. Prioritise routes through hypergiant stars (which grant +10 health on visit) and stars with positive `healthImpact` research bonuses to offset the accelerated drain.
+On a hard run, every edge choice matters. Prioritise routes through hypergiant stars (which grant +10 health when the donkey eats there, and double grass plus 1.5× energy on teleportation) and stars with positive `healthImpact` research bonuses to offset the accelerated drain.
 
 <Warning>
   If `estadoSalud` is set to `"Dead"` (0 % health), `Donkey.is_dead()` returns `true` immediately on initialization — the donkey is dead before traversal begins. The first travel attempt will return an error and no path will be executed. Always start with a health state of at least `"Dying"` to allow the simulation to run.

@@ -141,17 +141,19 @@ if not health_result.ok:
 
 ## FilesUtils Usage
 
-`FilesUtils.read_json` returns a `DataAndMsgReturn`, giving callers both a success flag and the parsed data in a single object:
+`FilesUtils.read_json` (defined in `src/utils/Files.py`) returns a `DataAndMsgReturn`, giving callers both an error flag and the parsed data in a single object. Note that `read_json` sets `response.error` on a JSON parse exception and `response.msg` when the file does not exist — in both failure cases `response.data` will be `None` or absent, so the safest check is to test `response.data` directly:
 
 ```python
 response = FilesUtils.read_json('src/data/Constellations.json')
 if response.error:
-    print('Load failed:', response.error)
+    print('Parse error:', response.error)
+elif response.msg:
+    print('File not found:', response.msg)
 else:
-    data = response.data  # parsed dict
+    data = response.data  # successfully parsed dict
 ```
 
-Because `to_dict()` always returns `{}` instead of `None` for an absent `data` field, you can safely access `response.data` without an extra `None` guard after confirming `response.ok`.
+Because `to_dict()` always returns `{}` instead of `None` for an absent `data` field, you can safely access the serialised form without an extra `None` guard after confirming that neither `response.error` nor `response.msg` is set.
 
 ---
 

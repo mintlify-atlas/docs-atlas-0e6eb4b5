@@ -1,5 +1,5 @@
 ---
-title: "Get Started with Constellations"
+title: "Quickstart: Install and Run Constellations Locally"
 sidebarTitle: "Quickstart"
 description: "Clone, install Arcade, and run Constellations in four steps. Includes a minimal 3-star JSON template to get your first graph simulation running fast."
 ---
@@ -38,7 +38,7 @@ Always run `python run.py` from the **project root directory** (`Constellations/
 
     The `requirements.txt` file contains exactly one entry:
 
-    ```
+    ```txt
     arcade==3.3.3
     ```
 
@@ -155,8 +155,8 @@ Constellations reads its star graph from a JSON file. The default graph ships at
 | Field | Type | Description |
 |-------|------|-------------|
 | `constellations` | array | One or more named groups of stars. Stars across different constellations can still be linked by `starId`. |
-| `burroenergiaInicial` | number | The donkey's starting energy level (0–100). Depleted by `distance × 0.1` per edge traversal. |
-| `estadoSalud` | string | Initial health label — `"Excellent"`, `"Good"`, `"Bad"`, or `"Dying"`. Maps to a starting `health_percent` value. |
+| `burroenergiaInicial` | number | The donkey's starting energy level (0–100). Each edge traversal consumes `distance × 0.1` energy. |
+| `estadoSalud` | string | Initial health label — `"Excellent"` (100%), `"Good"` (75%), `"Bad"` (50%), or `"Dying"` (25%). Each edge traversal also reduces health by `distance × 0.05`; visiting a hypergiant star restores +10 health. |
 | `pasto` | number | Starting grass supply in kg. Each edge traversal consumes `distance × 0.02` kg; eating at a star consumes `timeToEat` kg. |
 | `startAge` | number | The donkey's age at the beginning of the simulation. Modified by each star's `ageImpact` during research. |
 | `deathAge` | number | The maximum age the donkey can reach before dying of old age. |

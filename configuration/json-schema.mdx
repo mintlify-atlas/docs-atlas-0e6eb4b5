@@ -1,7 +1,7 @@
 ---
-title: "Constellation JSON File Format and Schema"
+title: "Constellation JSON File Format and Schema Reference"
 sidebarTitle: "JSON Schema"
-description: "The JSON file defines the entire graph topology, donkey starting state, and simulation parameters. Learn the top-level schema and how to structure multiple constellations."
+description: "The JSON file defines the graph topology, donkey starting state, and simulation parameters. Learn the top-level schema and how to structure constellations."
 ---
 
 The JSON file is the single source of truth for a Constellations run — it defines the graph topology across one or more constellation objects, sets the donkey's initial resources, and supplies the simulation parameters used by both the Dijkstra shortest-path and longest-path algorithms. Every time you load or reload a run, the engine reads this file from disk and rebuilds the graph from scratch.

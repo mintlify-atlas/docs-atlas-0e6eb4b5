@@ -1,7 +1,7 @@
 ---
 title: "GraphController — Graph Loading and Path Queries"
 sidebarTitle: "GraphController"
-description: "GraphController wraps the Graph model with JSON loading, path computation, and edge-toggling. It is the primary interface between the UI layer and the graph algorithms."
+description: "GraphController wraps the Graph model with JSON loading, path computation, and edge-toggling for the Constellations game UI layer."
 ---
 
 GraphController is the central service object of the Constellations application. It holds the active `Graph` instance, delegates to `dijkstra_simple` and `LongestPathWithDonkey` for path computation, and maintains the `highlight_edges` list consumed by GraphView to draw highlighted connections on screen. All file I/O is performed through `FilesUtils`, keeping the controller free of direct filesystem concerns.

@@ -43,7 +43,7 @@ Stars in the night sky serve as **graph vertices**. The glowing lines connecting
 
 The repository follows a clean MVC-style layout that separates models, controllers, views, and static assets:
 
-```
+```text
 Constellations/
 ├── run.py                        # Entry point — instantiates Main and calls start()
 ├── requirements.txt              # Python dependencies (arcade==3.3.3)
@@ -66,6 +66,16 @@ Constellations/
     │   └── WidgetLayoutController.py # Positions HUD widgets
     ├── ui/
     │   ├── interface.py          # Creates the Arcade Window (800 × 620) and first view
+    │   ├── components/
+    │   │   ├── Dialog.py         # Modal dialog component
+    │   │   ├── Toast.py          # Toast notification component
+    │   │   └── bar/
+    │   │       ├── Bar.py            # Base bar widget
+    │   │       ├── AgeBar.py         # Age HUD bar
+    │   │       ├── EnergyBar.py      # Energy HUD bar
+    │   │       ├── GrassBar.py       # Grass HUD bar
+    │   │       ├── HealthStatusBar.py # Health status HUD bar
+    │   │       └── LifeBar.py        # Life HUD bar
     │   └── views/
     │       ├── MenuView.py       # Start menu: JSON loader, input boxes, algorithm buttons
     │       ├── GameView.py       # Main game view: renders graph and animates traversal

@@ -1,7 +1,7 @@
 ---
-title: "Star Object Properties and Effect Reference"
+title: "Star Object Properties: Fields and Gameplay Effects"
 sidebarTitle: "Star Properties"
-description: "Each star object in the JSON defines a graph vertex with gameplay effects. This reference covers every star field, its type, and its impact on the donkey during traversal."
+description: "Each star in the JSON defines a graph vertex. This reference covers every field, its type, and how it affects the donkey during traversal and star visits."
 ---
 
 Each entry in a constellation's `starts` array defines one star vertex in the graph. These properties serve two purposes: they control graph topology (which stars are connected and at what cost) and they govern the donkey's resource changes when it visits, eats, or researches at a star. Understanding every field lets you craft constellations that are challenging, rewarding, or precisely balanced.
@@ -57,7 +57,7 @@ Each entry in a constellation's `starts` array defines one star vertex in the gr
 </ParamField>
 
 <ParamField body="hypergiant" type="boolean">
-  When `true`, visiting this star triggers a teleportation dialog and automatically grants the donkey **+10 health** (capped at 100). Hypergiant stars are rendered in **gold** in the graph UI, making them visually distinct from standard stars.
+  When `true`, arriving at this star immediately opens a teleportation dialog that lets the donkey jump to a different star. If the player chooses to teleport, the donkey's energy is boosted to `min(100, energy × 1.5)` and its grass supply is doubled before the jump. Additionally, when the donkey *eats* at a hypergiant star, it receives a **+10 health** bonus on top of the normal eating effect (capped at 100). Hypergiant stars are rendered in **gold** in the graph UI, making them visually distinct from standard stars.
 </ParamField>
 
 ## Connection Objects (`linkedTo`)
@@ -105,5 +105,5 @@ The following is a complete star object taken from the bundled `Constellations.j
 ```
 
 <Tip>
-  Hypergiant stars (rendered in gold) grant +10 health on visit and open a teleportation dialog that lets you jump to a distant part of the graph instantly. Because they also tend to carry strong `healthImpact` bonuses through research, routing through a hypergiant can rescue a donkey that would otherwise die mid-path — plan your routes to pass through them when health is low.
+  Hypergiant stars (rendered in gold) open a teleportation dialog on arrival that lets you jump to a distant part of the graph instantly, boosting the donkey's energy (×1.5, capped at 100) and doubling its grass supply before the jump. If the donkey can eat at a hypergiant star, it also receives +10 health on top of the normal eating effect. Because hypergiant stars also tend to carry strong `healthImpact` bonuses through research, routing through one can rescue a donkey that would otherwise die mid-path — plan your routes to pass through them when health is low.
 </Tip>

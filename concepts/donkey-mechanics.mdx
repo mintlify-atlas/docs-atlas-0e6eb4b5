@@ -1,5 +1,5 @@
 ---
-title: "Donkey Resource System and Health States"
+title: "Donkey Resources, Health States, and Survival Mechanics"
 sidebarTitle: "Donkey Mechanics"
 description: "The donkey manages energy, health, grass, and age across the graph. Learn how travel costs, eating, research, and death conditions work in the simulation."
 ---
@@ -37,10 +37,10 @@ class HealthType(Enum):
 
 | State | Percent range | Meaning |
 |---|---|---|
-| `Excellent` | 76–100 | Full health; no restrictions |
-| `Good` | 51–75 | Healthy; cannot eat (eating requires health < 50 %) |
-| `Bad` | 26–50 | Degraded; eating is now permitted |
-| `Dying` | 1–25 | Critical; eating is permitted and strongly advisable |
+| `Excellent` | > 75 to 100 | Full health; no restrictions |
+| `Good` | > 50 to 75 | Healthy; cannot eat (eating requires health < 50 %) |
+| `Bad` | > 25 to 50 | Degraded; eating permitted only when health is strictly below 50 % |
+| `Dying` | > 0 to 25 | Critical; eating is permitted and strongly advisable |
 | `Dead` | 0 | Terminal; all actions are blocked |
 
 ## Travel Costs

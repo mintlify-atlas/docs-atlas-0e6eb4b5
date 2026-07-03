@@ -12,21 +12,18 @@ Once a path is computed and `GameView` opens, `DVController` (the `DonkeyViewCon
   <Step title="Journey starts">
     `ViewDonkey.walk_road()` calls `DVController.walk_road(road, vertex_index=1)`. Because `journey_started` is `False` on the first call, a **"Starting journey"** toast is displayed and `journey_started` is set to `True`. The actual first move is delayed by **3.5 seconds** via `arcade.schedule_once`.
   </Step>
-  <Step title="Travel to the next star">
-    Before moving, the controller calls `donkey.get_travel_cost(distance)` and checks whether `energy_donkey` and `grass_stored` are sufficient for the trip. If either resource falls short, the respective value is zeroed out and death is triggered immediately — no partial travel occurs.
-  </Step>
   <Step title="Blocked edge check">
-    The edge from the previous star to the current star is inspected for `"blocked": True` in the connection data. If blocked, a `DialogComponent` appears asking:
+    Before any movement, the edge from the previous star to the current star is inspected for `"blocked": True` in the connection data. If blocked, a `DialogComponent` appears asking:
 
     ```
-    "Path {from} -> {to} blocked. Unblock?"
+    "Path {from}->{to} blocked. Unblock?"
     ```
 
     - **YES** (`dialog_closed_status = True`): `graph_controller.toggle_edge(from, to)` is called, a toast confirms the unblock, and traversal resumes after 2.6 seconds.
     - **NO** (`dialog_closed_status = False`): `graph_controller.get_shortest_path(from_label, end)` recalculates a detour; the donkey follows the new path after 3.2 seconds.
   </Step>
-  <Step title="Arrival at star">
-    `donkey.travel(distance)` is called, consuming energy and grass proportional to the edge weight. All five status bars are updated **immediately** after the call. If `travel_result.ok` is `False` or the donkey is dead post-travel, death handling kicks in.
+  <Step title="Travel to the next star">
+    Once the edge is confirmed passable, the controller calls `donkey.get_travel_cost(distance)` and checks whether `energy_donkey` and `grass_stored` are sufficient for the trip. If either resource falls short, the respective value is zeroed out and death is triggered immediately — no partial travel occurs. If resources are sufficient, `donkey.travel(distance)` is called, consuming energy and grass proportional to the edge weight. All five status bars are updated **immediately** after the call. If `travel_result.ok` is `False` or the donkey is dead post-travel, death handling kicks in.
   </Step>
   <Step title="Eating">
     After a 1.5-second delay, `_process_star_activities()` checks `donkey.can_eat()` (true when health is below 50% and above 0%). If the donkey can eat, `donkey.eat_at_star(star_data)` is called — consuming grass and recovering energy — and the status bars are updated. The next phase starts after `star_data['timeToEat']` seconds (default 3).

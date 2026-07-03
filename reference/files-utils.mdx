@@ -1,7 +1,7 @@
 ---
-title: "FilesUtils — JSON and File I/O Utilities"
+title: "FilesUtils — Static File and JSON I/O Helper Class"
 sidebarTitle: "FilesUtils"
-description: "FilesUtils is a static-method utility class for reading and writing files and JSON. All methods return BaseReturn or DataAndMsgReturn to avoid exception propagation."
+description: "FilesUtils provides static methods for reading and writing files and JSON, returning BaseReturn or DataAndMsgReturn objects instead of raising exceptions."
 ---
 
 `FilesUtils` in `src/utils/Files.py` provides all file I/O for the Constellations project. Every method is `@staticmethod` and returns a structured response object — either `BaseReturn` or `DataAndMsgReturn` — rather than raising exceptions to the caller. This makes `FilesUtils` safe to invoke directly inside UI callbacks and controller methods without wrapping calls in `try/except` blocks.

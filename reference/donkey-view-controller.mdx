@@ -1,7 +1,7 @@
 ---
-title: "DVController — Donkey Journey Orchestration"
+title: "DVController — Donkey Traversal and Journey Control"
 sidebarTitle: "DVController"
-description: "DVController in DonkeyViewController.py drives the animated traversal, handles blocked-edge dialogs, triggers eating and research, and manages death events and status bar updates."
+description: "DVController drives animated star traversal, handles blocked-edge dialogs, triggers eating and research activities, and manages donkey death events."
 ---
 
 `DVController` (`DonkeyViewController`) ties together the `Donkey` model, the graph, and the Arcade UI layer. It schedules every traversal step via `arcade.schedule_once`, updates all five status bars after each state change, and surfaces `Toast` and `DialogComponent` prompts for user interaction. The controller is the single point of truth for whether a journey is in progress (`journey_started`) and for which stars have been visited (`visited_stars`).
@@ -13,10 +13,8 @@ DVController(modules, view, coordinates, widget)
 ```
 
 <ParamField path="modules" type="dict" required>
-  The shared references dictionary assembled by `Main`. Expected keys:
-  - `"graph_controller"` — the active `GraphController` instance
-  - `"donkey"` — the `Donkey` model (also accessible via `widget.donkey`)
-  - `"files_utils"` — the `FilesUtils` utility class
+  The shared references dictionary assembled by `Main`. Keys accessed by this controller:
+  - `"graph_controller"` — the active `GraphController` instance, used for path queries and edge toggling
   - `"main_runner"` — the `Main` runner, used to read `end_vertex` during hypergiant jumps
 </ParamField>
 
@@ -136,6 +134,18 @@ def _handle_death(self) -> None
 3. Calls `donkey.get_death_cause()` to retrieve a dict with keys `cause`, `energy`, `health`, `age`, and `grass`.
 4. Shows a 10-second toast containing all death metrics.
 5. Sets `self.journey_started = False` to prevent any scheduled callbacks from advancing the journey further.
+
+---
+
+## move_to_coordinates
+
+Moves the donkey widget to the position stored in `self.coordinates` and forces an immediate visual refresh.
+
+```python
+def move_to_coordinates(self) -> None
+```
+
+Sets `widget.left` to `coordinates['x'] - 50` and `widget.bottom` to `coordinates['y'] - 50`, then calls `widget.trigger_render()`. `self.coordinates` is updated by `_handle_movement` immediately before this method is called, so the widget snaps to the newly arrived star's position. Returns `None`.
 
 ---
 

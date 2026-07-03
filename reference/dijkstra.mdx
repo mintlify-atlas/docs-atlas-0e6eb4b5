@@ -1,7 +1,7 @@
 ---
-title: "dijkstra_simple — Single-Source Shortest Path"
+title: "dijkstra_simple — Weighted Single-Source Shortest Path"
 sidebarTitle: "dijkstra_simple"
-description: "dijkstra_simple(graph, start_id, target_id) computes the shortest path using Dijkstra's algorithm, respecting blocked edges. Returns distances, predecessors, and path list."
+description: "dijkstra_simple computes the shortest path between two graph vertices, respects blocked edges, and returns distances, predecessors, and the path."
 ---
 
 `dijkstra_simple` implements Dijkstra's algorithm on a `Graph` instance. It is a module-level function located in `src/controllers/Dijkstra.py` and is called by both `GraphController.get_shortest_path()` and `GraphController.get_shortest_path_avoiding()`. The function operates on a standard adjacency-list graph, processes vertices in order of their tentative distance, and stops as soon as the target vertex is dequeued — making it efficient for point-to-point queries on the sparse constellation graphs used in this project.
