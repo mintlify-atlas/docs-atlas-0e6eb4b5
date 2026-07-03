@@ -1,0 +1,175 @@
+---
+title: "DVController — Donkey Journey Orchestration"
+sidebarTitle: "DVController"
+description: "DVController in DonkeyViewController.py drives the animated traversal, handles blocked-edge dialogs, triggers eating and research, and manages death events and status bar updates."
+---
+
+`DVController` (`DonkeyViewController`) ties together the `Donkey` model, the graph, and the Arcade UI layer. It schedules every traversal step via `arcade.schedule_once`, updates all five status bars after each state change, and surfaces `Toast` and `DialogComponent` prompts for user interaction. The controller is the single point of truth for whether a journey is in progress (`journey_started`) and for which stars have been visited (`visited_stars`).
+
+## Constructor
+
+```python
+DVController(modules, view, coordinates, widget)
+```
+
+<ParamField path="modules" type="dict" required>
+  The shared references dictionary assembled by `Main`. Expected keys:
+  - `"graph_controller"` — the active `GraphController` instance
+  - `"donkey"` — the `Donkey` model (also accessible via `widget.donkey`)
+  - `"files_utils"` — the `FilesUtils` utility class
+  - `"main_runner"` — the `Main` runner, used to read `end_vertex` during hypergiant jumps
+</ParamField>
+
+<ParamField path="view" type="UIView | View" required>
+  The Arcade `GameView` instance. The controller calls `view.add_widget`, `view.show_dialog`, `view.handle_close_dialog`, and reads `view.dialog_closed_status` and `view.last_dialog_input`.
+</ParamField>
+
+<ParamField path="coordinates" type="dict" required>
+  Initial `{"x": float, "y": float}` position for the donkey widget. Updated whenever the donkey moves to a new star.
+</ParamField>
+
+<ParamField path="widget" type="UIWidget" required>
+  The `ViewDonkey` Arcade widget. Must expose a `donkey` attribute pointing to the `Donkey` model. If the attribute is absent, the constructor calls `_initialize_donkey_fallback()` and emits an error log.
+</ParamField>
+
+The constructor also attempts to preload `src/assets/sounds/donkey_death.wav` into `self.death_sound`. If the file is unavailable the attribute is set to `None` and a warning is printed; the rest of the controller continues to function normally.
+
+---
+
+## walk_road
+
+The main traversal entry point. Each call processes one hop along `road` and then schedules the next hop via `arcade.schedule_once`.
+
+```python
+def walk_road(self, road: list, vertex_index: int = 1) -> None
+```
+
+**Full event sequence for a single step:**
+
+1. **Guard checks** — verifies `widget.donkey` exists and is not dead. If the donkey is already dead and the journey has not yet been flagged as over, `_handle_death()` is called immediately.
+2. **Journey start** — on the very first call (`journey_started == False`), shows a *"Starting journey"* toast for 3 seconds, then reschedules `walk_road` after 3.5 s.
+3. **Completion check** — if `vertex_index >= len(road)`, shows a success toast and returns.
+4. **Blocked-edge check** — reads the connection data between `road[vertex_index - 1]` and `road[vertex_index]`. If `"blocked": True`, opens a YES/NO dialog via `show_dialog()`. YES unblocks the edge and continues; NO recalculates the route via `get_shortest_path()`.
+5. **Movement** — calls `_handle_movement()`, which deducts travel costs, updates status bars, moves the widget to the star's coordinates, and schedules `_process_star_activities()` after 1.5 s.
+6. **Star activities** — `_process_star_activities()` handles hypergiant stars, eating (`donkey.eat_at_star()`), and research (`donkey.research_at_star()`), each gated by death checks.
+7. **Finish visit** — `_finish_star_visit()` updates status bars and schedules the next `walk_road` call after 1.0 s.
+
+<ParamField path="road" type="list" required>
+  Ordered list of vertex labels representing the planned route (as returned by `get_shortest_path` or `get_longest_path_with_donkey`).
+</ParamField>
+
+<ParamField path="vertex_index" type="int" default="1">
+  Index of the *next* vertex to travel to. Starts at `1` (the first hop away from the origin). Incremented by one after each successful star visit.
+</ParamField>
+
+---
+
+## show_toast
+
+Displays a `Toast` overlay widget on the current view. Any previously active toast is removed first to avoid stacking.
+
+```python
+def show_toast(self, msg: str, duration: float = None) -> None
+```
+
+<ParamField path="msg" type="str" required>
+  The message string to display in the toast.
+</ParamField>
+
+<ParamField path="duration" type="float">
+  If provided, the toast is automatically removed after this many seconds via `arcade.schedule_once`. If omitted, the toast persists until the next `show_toast` call replaces it.
+</ParamField>
+
+---
+
+## show_dialog
+
+Creates a `DialogComponent` with YES and NO buttons and attaches it to the view.
+
+```python
+def show_dialog(self, msg: str = 'Hello Universe!', callback=None) -> None
+```
+
+<ParamField path="msg" type="str" default="'Hello Universe!'">
+  The prompt text shown inside the dialog.
+</ParamField>
+
+<ParamField path="callback" type="callable | None" default="None">
+  A zero-argument callable invoked by `view.handle_close_dialog` after the user clicks YES or NO. The caller reads `view.dialog_closed_status` inside the callback to determine which button was pressed (`True` for YES, `False` for NO).
+</ParamField>
+
+---
+
+## _update_status_bars
+
+Updates all five status-bar widgets to reflect the donkey's current resource state. Called immediately after every state-changing operation (travel, eat, research) and once more at death.
+
+```python
+def _update_status_bars(self) -> None
+```
+
+The method iterates over the following widget keys in `view.layout.widgets` and writes to each widget's `value_label` attribute, then calls `trigger_render()`:
+
+| Widget key | Value written |
+|---|---|
+| `bar_age` | `"{age} yrs"` |
+| `bar_energy` | `"{energy_donkey:.1f}%"` |
+| `bar_life` | `"{get_health_percent():.1f}%"` |
+| `bar_grass` | `"{grass_stored:.1f}kg"` |
+| `bar_healthStatus` | `donkey.health_status.text` |
+
+If `view.layout` or `view.layout.widgets` is absent, the method prints a warning and returns without raising.
+
+---
+
+## _handle_death
+
+Handles all cleanup when the donkey's `is_dead()` check returns `True`.
+
+```python
+def _handle_death(self) -> None
+```
+
+**Sequence:**
+1. Calls `_update_status_bars()` one final time.
+2. Plays `donkey_death.wav` via `arcade.play_sound()` if `self.death_sound` is not `None`.
+3. Calls `donkey.get_death_cause()` to retrieve a dict with keys `cause`, `energy`, `health`, `age`, and `grass`.
+4. Shows a 10-second toast containing all death metrics.
+5. Sets `self.journey_started = False` to prevent any scheduled callbacks from advancing the journey further.
+
+---
+
+## _hypergiant_decision
+
+Called when the donkey arrives at a vertex whose data contains `"hypergiant": True`. Presents a YES/NO dialog asking whether to jump to a new destination.
+
+```python
+def _hypergiant_decision(self, road, vertex_index, current_vertex) -> None
+```
+
+**On YES:**
+1. Opens a second input dialog prompting the user to type a destination star label.
+2. Calls `_hypergiant_travel()`, which boosts `donkey.energy_donkey` by 50 % (capped at 100) and doubles `donkey.grass_stored`, then updates the status bars.
+3. After the input dialog closes, reads `view.last_dialog_input`, validates the label against `graph.vertex_list`, and calls `get_shortest_path_avoiding(new_target, final_destination, forbidden=visited_stars)` to compute a route that skips already-visited stars.
+4. Schedules `walk_road(new_path, 1)` after 0.1 s.
+
+**On NO:**
+Shows a *"Continuing route"* toast and schedules `walk_road(road, vertex_index + 1)` after 1 s to resume the original path.
+
+<ParamField path="road" type="list" required>
+  The current route list at the time the hypergiant star was reached.
+</ParamField>
+
+<ParamField path="vertex_index" type="int" required>
+  Index of the hypergiant star within `road`.
+</ParamField>
+
+<ParamField path="current_vertex" type="any" required>
+  Label of the hypergiant star, used as the origin for the new shortest-path query.
+</ParamField>
+
+---
+
+<Note>
+  All delays throughout `DVController` (ranging from 1.0 s to 3.5 s) are registered with `arcade.schedule_once`, which is **non-blocking**. The callbacks are queued in Arcade's event loop and fire on the next matching frame, so the UI remains fully responsive — including dialog interactions — while the donkey is "in transit" between stars.
+</Note>

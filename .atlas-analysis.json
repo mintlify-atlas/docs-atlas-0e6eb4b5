@@ -1,0 +1,124 @@
+{
+  "projectType": "general",
+  "projectName": "Constellations",
+  "projectDescription": "A Python graph-traversal simulation game built with the Arcade library, where a donkey navigates a weighted star-constellation graph using Dijkstra's shortest-path or a DFS-based longest-path algorithm, managing energy, health, and grass resources along the way.",
+  "theme": "palm",
+  "primaryColor": "#5B4FCF",
+  "lightColor": "#8B7FFF",
+  "darkColor": "#2D2060",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Guide",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "introduction",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/graph-and-constellations",
+              "concepts/donkey-mechanics",
+              "concepts/path-algorithms"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/json-schema",
+              "configuration/star-properties",
+              "configuration/donkey-parameters"
+            ]
+          },
+          {
+            "group": "Gameplay",
+            "pages": [
+              "gameplay/menu-and-modes",
+              "gameplay/traversal-and-events",
+              "gameplay/hypergiant-stars"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Reference",
+        "groups": [
+          {
+            "group": "Models",
+            "pages": [
+              "reference/graph",
+              "reference/donkey",
+              "reference/returnings"
+            ]
+          },
+          {
+            "group": "Controllers",
+            "pages": [
+              "reference/graph-controller",
+              "reference/dijkstra",
+              "reference/longest-path",
+              "reference/donkey-view-controller"
+            ]
+          },
+          {
+            "group": "Utilities",
+            "pages": [
+              "reference/files-utils"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Weighted undirected graph built from JSON constellation data",
+    "Dijkstra's algorithm for shortest-path traversal between stars",
+    "DFS-based longest-path algorithm constrained by donkey resources",
+    "Donkey entity with energy, health, grass, and age resource simulation",
+    "Interactive Arcade GUI with graph visualization, status bars, and edge toggling",
+    "Dynamic path blocking/unblocking via mouse click on graph edges",
+    "Hypergiant star events that trigger teleportation and resource bonuses",
+    "JSON-driven graph loading with file picker dialog",
+    "Toast notifications and dialog prompts for in-game events",
+    "Death-cause tracking with detailed post-mortem reporting"
+  ],
+  "publicApiSurface": [
+    "Graph.add_vertex(id, data)",
+    "Graph.add_edge(from_id, to_id, weight)",
+    "Graph.get_vertex(id)",
+    "Graph.get_vertices()",
+    "Vertex.add_neighbor(neighbor, weight)",
+    "Vertex.get_connections()",
+    "Donkey.travel(distance)",
+    "Donkey.eat_at_star(star_data)",
+    "Donkey.research_at_star(star_data)",
+    "Donkey.is_dead()",
+    "Donkey.can_eat()",
+    "Donkey.get_death_cause()",
+    "Donkey.set_health_status(percent)",
+    "Donkey.get_travel_cost(distance)",
+    "Donkey.to_dict()",
+    "dijkstra_simple(graph, start_id, target_id)",
+    "LongestPathWithDonkey.find_longest_path(start)",
+    "GraphController.load_graph(filename)",
+    "GraphController.get_shortest_path(start, end)",
+    "GraphController.get_shortest_path_avoiding(start, end, forbidden)",
+    "GraphController.get_longest_path_with_donkey(start, donkey)",
+    "GraphController.toggle_edge(from_label, to_label)",
+    "GraphController.reload_graph()",
+    "GraphController.get_json_data()",
+    "FilesUtils.read_json(filename)",
+    "FilesUtils.write_json(filename, data)",
+    "FilesUtils.read_file(filename)",
+    "FilesUtils.write_file(filename, data, mode)",
+    "FilesUtils.file_exists(filename)",
+    "BaseReturn.ok",
+    "BaseReturn.error",
+    "DataAndMsgReturn.msg",
+    "DataAndMsgReturn.data"
+  ]
+}

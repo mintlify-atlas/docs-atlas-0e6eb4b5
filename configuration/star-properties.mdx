@@ -1,0 +1,109 @@
+---
+title: "Star Object Properties and Effect Reference"
+sidebarTitle: "Star Properties"
+description: "Each star object in the JSON defines a graph vertex with gameplay effects. This reference covers every star field, its type, and its impact on the donkey during traversal."
+---
+
+Each entry in a constellation's `starts` array defines one star vertex in the graph. These properties serve two purposes: they control graph topology (which stars are connected and at what cost) and they govern the donkey's resource changes when it visits, eats, or researches at a star. Understanding every field lets you craft constellations that are challenging, rewarding, or precisely balanced.
+
+## Star Properties
+
+<ParamField body="id" type="number" required>
+  A unique integer identifier for this star within the file. The `id` is used exclusively in `linkedTo` references to form edges — it is not the runtime key. At load time, `GraphController.load_graph()` builds an `id → label` map and resolves all `starId` values to their corresponding `label` strings.
+</ParamField>
+
+<ParamField body="label" type="string" required>
+  A single-character string shown inside the star node in the graph UI (e.g. `"A"`, `"B"`, `"G"`). Labels must be unique across the entire file because they become the primary vertex keys in the `Graph` data structure.
+</ParamField>
+
+<ParamField body="linkedTo" type="array" required>
+  An array of connection objects that define directed edges from this star to its neighbours. Each object must contain:
+  - `starId` (number) — the `id` of the target star.
+  - `distance` (number) — the edge weight used by both the Dijkstra shortest-path algorithm and the longest-path finder.
+
+  See [Connection Objects](#connection-objects-linkedto) below for the full structure.
+</ParamField>
+
+<ParamField body="radius" type="number">
+  The star's visual radius used when rendering the node in the graph canvas. This value is purely cosmetic and has no effect on gameplay or path calculations. Typical values range from `0.3` to `1.0`.
+</ParamField>
+
+<ParamField body="timeToEat" type="number">
+  The amount of grass (in kg) the donkey consumes when it eats at this star. Eating is only possible when the donkey's health is below 50 % and above 0 %. The donkey's `grass_stored` is reduced by this value, and `amountOfEnergy` is recovered.
+</ParamField>
+
+<ParamField body="amountOfEnergy" type="number">
+  The energy percentage gained when the donkey successfully eats at this star. The engine always treats this as a positive gain (negative values are converted via `abs()`). Energy is capped at `100`.
+</ParamField>
+
+<ParamField body="researchTime" type="number">
+  The number of time units spent researching this star. Together with `energyPerResearchTime`, this determines the total energy cost of a research action: `energy_cost = researchTime × energyPerResearchTime`.
+</ParamField>
+
+<ParamField body="energyPerResearchTime" type="number">
+  Energy points deducted per unit of research time. See `researchTime` for the combined cost formula.
+</ParamField>
+
+<ParamField body="healthImpact" type="number">
+  Health percentage change applied to the donkey after it completes research at this star. Positive values restore health; negative values damage it. The result is clamped to the range `[0, 100]`.
+</ParamField>
+
+<ParamField body="ageImpact" type="number">
+  Years added to (or subtracted from) the donkey's age after research is completed. Negative values effectively rejuvenate the donkey. Age is clamped to a minimum of `0`.
+</ParamField>
+
+<ParamField body="coordenates" type="object" required>
+  A `{"x": number, "y": number}` object specifying the star's pixel position on the canvas. The renderer uses these coordinates to place the node and to draw edges between connected stars. Note the field name is spelled `coordenates` (one `i`) — this is the canonical spelling in the source data.
+</ParamField>
+
+<ParamField body="hypergiant" type="boolean">
+  When `true`, visiting this star triggers a teleportation dialog and automatically grants the donkey **+10 health** (capped at 100). Hypergiant stars are rendered in **gold** in the graph UI, making them visually distinct from standard stars.
+</ParamField>
+
+## Connection Objects (`linkedTo`)
+
+Each element of the `linkedTo` array is an object with exactly two fields:
+
+```json
+{
+  "starId": 3,
+  "distance": 5
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `starId` | number | The `id` of the target star this edge leads to. |
+| `distance` | number | The edge weight — used as the cost metric by both the Dijkstra shortest-path algorithm and the longest-path-with-donkey algorithm. Higher distances cost more energy, health, and grass. |
+
+To create a bidirectional connection between two stars, add a matching `linkedTo` entry in *each* star's array pointing back to the other. Most constellations in the bundled templates use bidirectional edges.
+
+## Example Star
+
+The following is a complete star object taken from the bundled `Constellations.json` template. Star `G` (id `7`) is a hypergiant — note the `hypergiant: true` flag, the notably positive `healthImpact`, and the long-range connections it offers.
+
+```json
+{
+  "id": 7,
+  "label": "G",
+  "linkedTo": [
+    { "starId": 2, "distance": 6 },
+    { "starId": 3, "distance": 9 },
+    { "starId": 5, "distance": 15 },
+    { "starId": 8, "distance": 3 }
+  ],
+  "radius": 0.5,
+  "timeToEat": 2,
+  "amountOfEnergy": 4,
+  "researchTime": 1,
+  "energyPerResearchTime": 2,
+  "healthImpact": 10,
+  "ageImpact": 3,
+  "coordenates": { "x": 460, "y": 140 },
+  "hypergiant": true
+}
+```
+
+<Tip>
+  Hypergiant stars (rendered in gold) grant +10 health on visit and open a teleportation dialog that lets you jump to a distant part of the graph instantly. Because they also tend to carry strong `healthImpact` bonuses through research, routing through a hypergiant can rescue a donkey that would otherwise die mid-path — plan your routes to pass through them when health is low.
+</Tip>

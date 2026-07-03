@@ -1,0 +1,113 @@
+---
+title: "LongestPathWithDonkey — Resource-Constrained DFS"
+sidebarTitle: "LongestPathWithDonkey"
+description: "LongestPathWithDonkey finds the longest viable path from a start vertex using DFS with donkey-state deep-copies to prune branches where resources run out."
+---
+
+`LongestPathWithDonkey` in `src/controllers/LongestPathWithDonkey.py` calculates the maximum-distance path the donkey can walk before its energy, health, or grass runs out. It uses recursive depth-first search (DFS) with `copy.deepcopy` of the donkey's state at every branching point so that each branch has its own independent resource pool. When a branch exhausts the donkey's resources, that branch is pruned; the algorithm continues exploring remaining branches and keeps track of the globally longest viable route encountered.
+
+## Constructor
+
+```python
+LongestPathWithDonkey(graph, donkey)
+```
+
+<ParamField path="graph" type="Graph" required>
+  A loaded `Graph` instance whose `vertex_list` will be traversed during the DFS.
+</ParamField>
+
+<ParamField path="donkey" type="Donkey" required>
+  A `Donkey` instance carrying the initial resource values (energy, health, grass) to use as the baseline state at the start of every traversal.
+</ParamField>
+
+The constructor stores both arguments and initialises `self.best_path = []` and `self.max_distance = 0`, which are overwritten by each call to `find_longest_path`.
+
+---
+
+## find_longest_path
+
+The public entry point. Resets internal state, deep-copies the donkey to protect the caller's instance, and launches the recursive DFS.
+
+```python
+def find_longest_path(self, start):
+    self.best_path = []
+    self.max_distance = 0
+    self._dfs(start, deepcopy(self.donkey), [], 0)
+    return self.best_path, self.max_distance
+```
+
+<ParamField path="start" type="any" required>
+  Label of the vertex from which the DFS begins.
+</ParamField>
+
+<ResponseField name="best_path" type="list">
+  Ordered list of vertex labels representing the longest viable route found.
+</ResponseField>
+
+<ResponseField name="max_distance" type="float">
+  Total accumulated distance of `best_path`. Remains `0` if no step is possible from `start`.
+</ResponseField>
+
+---
+
+## _dfs Internal Algorithm
+
+`_dfs` is the recursive core. It appends the current vertex to the working path, updates the global best if a new maximum distance has been reached, and then tries to extend the path through every unvisited neighbour that the donkey can still reach.
+
+```python
+def _dfs(self, current, donkey, path, total_dist):
+    """Búsqueda recursiva (DFS) para encontrar el recorrido máximo viable."""
+    path.append(current)
+
+    if total_dist > self.max_distance:
+        self.max_distance = total_dist
+        self.best_path = path.copy()
+
+    for neighbor, data in self.graph.vertex_list[current].adjacent.items():
+        if neighbor not in path:
+            distance = data["distance"]
+            d_copy = deepcopy(donkey)
+            if self._can_travel(d_copy, distance):
+                travel_result = d_copy.travel(distance)
+                if travel_result.ok or not d_copy.is_dead():
+                    self._dfs(neighbor, d_copy, path, total_dist + distance)
+
+    path.pop()
+```
+
+Key design points:
+
+- **Visited check** — `if neighbor not in path` ensures the traversal stays acyclic without a separate visited set; the current working `path` list acts as the visited tracker.
+- **Deep copy per branch** — `d_copy = deepcopy(donkey)` creates a fully independent donkey state for each candidate neighbour. This means backtracking is implicit: when the recursive call returns, the caller's `donkey` object is untouched.
+- **Travel confirmation** — `d_copy.travel(distance)` is called only after `_can_travel` returns `True`. The branch is extended only when `travel_result.ok` is `True` or the donkey has not yet died.
+- **Backtrack** — `path.pop()` removes the current vertex before returning, restoring the path for sibling branches.
+
+---
+
+## _can_travel
+
+Checks whether the donkey has enough resources to cover the given distance, using the cost breakdown from `donkey.get_travel_cost(distance)`.
+
+```python
+def _can_travel(self, donkey, distance):
+    """Verifica si el burro puede realizar un viaje de 'distance' unidades."""
+    cost = donkey.get_travel_cost(distance)
+    enough_energy = (donkey.energy_donkey - cost.get("energy_cost", 0)) > 0
+    enough_health = (donkey.get_health_percent() - cost.get("health_cost", 0)) > 0
+    enough_grass  = (donkey.grass_stored  - cost.get("grass_required", 0)) > 0
+    return enough_energy and enough_health and enough_grass
+```
+
+**All three conditions must be satisfied** — a single depleted resource is enough to prevent travel. The check is strictly greater than zero, so a resource reaching exactly `0` also counts as insufficient.
+
+---
+
+## Resource Pruning
+
+The resource check in `_can_travel` acts as the primary pruning mechanism. When any of energy, health, or grass would drop to zero or below after a move, the entire subtree rooted at that neighbour is skipped. This can dramatically reduce the search space on dense graphs where most paths eventually exhaust the donkey before reaching distant vertices.
+
+---
+
+<Note>
+  `LongestPathWithDonkey` explores all simple paths from the start vertex, which is **O(V!)** in the worst case. Resource pruning reduces this significantly in practice, but the algorithm is designed for small constellation graphs with fewer than 20 vertices. Avoid using it on large graphs — consider a heuristic or beam-search approach for graphs with 20 or more vertices.
+</Note>

@@ -1,0 +1,86 @@
+---
+title: "Donkey Initial Parameters in the JSON File"
+sidebarTitle: "Donkey Parameters"
+description: "Configure the donkey's starting energy, health state, grass reserves, and age via top-level fields in the constellation JSON. Learn how each value affects the simulation."
+---
+
+The donkey's starting state is fully controlled by four top-level fields in the constellation JSON. Changing these values lets you tune difficulty — a donkey with low starting energy or grass will exhaust its reserves quickly on a long path, while generous starting values allow exploration of the entire graph. All four fields are read once at initialization time by `ViewDonkey._initialize_donkey()`, and sensible defaults are applied if any field is missing.
+
+## Parameter Reference
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `burroenergiaInicial` | number | `100` | Starting energy on a 0–100 scale. Drained by travel and research. |
+| `estadoSalud` | string | `"Excellent"` | Starting health state. Maps to an internal percentage (see below). |
+| `pasto` | number | `300` | Starting grass supply in kg. Consumed during travel and eating. |
+| `startAge` | number | `12` | Starting age in years. Modified by `ageImpact` on stars during research. |
+
+## Health State Values
+
+The `estadoSalud` string is converted to a numeric percentage by `ViewDonkey._health_text_to_percent()` before being passed to the `Donkey` constructor. The complete mapping is:
+
+| `estadoSalud` string | Internal health % |
+|---|---|
+| `"Excellent"` | 100 % |
+| `"Good"` | 75 % |
+| `"Bad"` | 50 % |
+| `"Dying"` | 25 % |
+| `"Dead"` | 0 % |
+
+Any unrecognised string falls back to `100` (Excellent). These thresholds also determine which `HealthType` enum variant the donkey is assigned at runtime:
+
+- `> 75 %` → `HealthType.EXCELLENT`
+- `> 50 % and ≤ 75 %` → `HealthType.GOOD`
+- `> 25 % and ≤ 50 %` → `HealthType.BAD`
+- `> 0 % and ≤ 25 %` → `HealthType.DYING`
+- `= 0 %` → `HealthType.DEAD`
+
+## Resource Consumption During Travel
+
+Every time the donkey moves along an edge, `Donkey.travel()` deducts resources proportional to the edge's `distance` value. The active cost formulas from `Donkey.get_travel_cost()` are:
+
+```python
+energy_cost    = distance        # energy points deducted
+health_cost    = distance        # health percentage points deducted
+grass_required = distance        # kg of grass consumed
+```
+
+This means that on a path whose edges sum to a total weight **W**, the donkey needs at minimum:
+
+- **W** energy points remaining
+- **W** health percentage headroom (enough health not to reach 0 %)
+- **W** kg of grass in storage
+
+Plan your starting values and route lengths accordingly. If any resource reaches zero mid-path, the donkey dies and the run ends.
+
+## Tuning for Difficulty
+
+Use these starting configurations as a baseline and adjust from there:
+
+**Easy run** — comfortable reserves that survive most graph layouts:
+
+```json
+{
+  "burroenergiaInicial": 100,
+  "estadoSalud": "Excellent",
+  "pasto": 500,
+  "startAge": 12
+}
+```
+
+**Hard run** — tight resources that demand careful path planning:
+
+```json
+{
+  "burroenergiaInicial": 40,
+  "estadoSalud": "Good",
+  "pasto": 50,
+  "startAge": 12
+}
+```
+
+On a hard run, every edge choice matters. Prioritise routes through hypergiant stars (which grant +10 health on visit) and stars with positive `healthImpact` research bonuses to offset the accelerated drain.
+
+<Warning>
+  If `estadoSalud` is set to `"Dead"` (0 % health), `Donkey.is_dead()` returns `true` immediately on initialization — the donkey is dead before traversal begins. The first travel attempt will return an error and no path will be executed. Always start with a health state of at least `"Dying"` to allow the simulation to run.
+</Warning>

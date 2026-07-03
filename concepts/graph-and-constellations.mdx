@@ -1,0 +1,135 @@
+---
+title: "Graph Structure and Constellation Data Model"
+sidebarTitle: "Graph & Constellations"
+description: "Stars are vertices and links are weighted edges in an undirected graph. Learn how the Graph and Vertex classes model the constellation topology."
+---
+
+The Constellations simulation represents the night sky as a weighted undirected graph. A JSON file defines one or more named constellation groups, each containing a list of stars. Every star becomes a vertex in the graph, and every `linkedTo` entry between two stars becomes a shared weighted edge. This structure lets the game apply standard graph algorithms — shortest path, longest path — directly to the star map, while keeping the visual layout driven by the same data.
+
+## Vertices and Edges
+
+Two classes in `src/models/Graph.py` form the backbone of the topology: `Vertex`, which holds a star's adjacency map and metadata, and `Graph`, which is the container for the whole star field.
+
+```python
+class Vertex:
+    def __init__(self, id, data=None):
+        self.id = id
+        self.adjacent = {}       # neighbour_id → weight dict
+        self.data = data or {}   # raw star JSON
+
+    def add_neighbor(self, neighbor, weight=0):
+        self.adjacent[neighbor] = weight
+
+    def get_connections(self):
+        return self.adjacent
+
+    def get_id(self):
+        return self.id
+
+
+class Graph:
+    def __init__(self):
+        self.vertex_list = {}   # label → Vertex
+        self.num_vertex = 0
+
+    def add_vertex(self, id, data=None): ...
+    def add_edge(self, from_id, to_id, weight=0): ...
+    def get_vertex(self, id): ...
+    def get_vertices(self): ...
+```
+
+Each edge weight is a dictionary (`{"distance": <float>, "blocked": <bool>}`) rather than a plain number, so additional metadata can travel with the connection.
+
+| Method | Parameters | Description |
+|---|---|---|
+| `add_vertex(id, data)` | `id` — vertex key (star label); `data` — star JSON dict | Inserts a new `Vertex`. If the label already exists, updates its `data` payload instead of creating a duplicate. |
+| `add_edge(from_id, to_id, weight)` | `from_id`, `to_id` — star labels; `weight` — edge weight dict | Creates both directions of the edge atomically, enforcing undirectedness. Auto-creates either endpoint if it is missing. |
+| `get_vertex(id)` | `id` — star label | Returns the `Vertex` object, or `None` if the label is not present. |
+| `get_vertices()` | — | Returns a `dict_keys` view of all vertex labels currently in the graph. |
+
+<Note>
+  The graph is **undirected** — `add_edge()` calls `add_neighbor()` on **both** endpoints simultaneously. Every link in `Constellations.json` is therefore stored as two half-edges, so you will see symmetric entries when iterating `vertex.adjacent`.
+</Note>
+
+## Loading a Constellation
+
+`GraphController.load_graph()` in `src/controllers/GraphController.py` is responsible for turning raw JSON into a live `Graph`. It works in two passes: first it builds an `id → label` look-up table and creates every vertex, then it iterates again to wire up the edges using labels as keys.
+
+```python
+def load_graph(self, filename):
+    """Loads a graph from a JSON file."""
+    response = FilesUtils.read_json(filename)
+    if response.error:
+        print("❌ Error loading:", response.error)
+        return False
+
+    data = response.data
+    if "constellations" not in data:
+        print("⚠️ JSON has no constellations key")
+        return False
+
+    self.filename = filename
+    self.graph = Graph()
+
+    # Pass 1 — build id → label map and create vertices
+    id_to_label = {}
+    for constellation in data["constellations"]:
+        for star in constellation["starts"]:
+            id_to_label[star["id"]] = star["label"]
+            self.graph.add_vertex(star["label"], star)
+
+    # Pass 2 — connect vertices using labels
+    for constellation in data["constellations"]:
+        for star in constellation["starts"]:
+            origen = star["label"]
+            for link in star["linkedTo"]:
+                destino = id_to_label[link["starId"]]
+                self.graph.add_edge(origen, destino, {
+                    "distance": link["distance"],
+                    "blocked": False
+                })
+
+    print(f"✅ Graph loaded with {len(self.graph.vertex_list)} stars.")
+    return True
+```
+
+The two-pass approach means numeric IDs in `linkedTo` are always resolved to human-readable labels (A, B, C …) before any edges are created. The full star JSON object — including `coordenates`, `hypergiant`, `timeToEat`, and research fields — is stored verbatim inside `Vertex.data` so every subsystem can access it without a separate look-up.
+
+## Graph Visualization
+
+The `GraphView` class in `src/ui/views/GraphView.py` reads the `coordenates` field directly from each star's JSON data to position nodes on screen:
+
+```python
+x, y = star["coordenates"]["x"], star["coordenates"]["y"]
+```
+
+Node colour is determined by constellation membership. At startup, `GraphView._assign_colors_to_constellations()` iterates the constellation list, sorts the names alphabetically, and assigns one colour from a fixed palette in round-robin order:
+
+| Palette slot | Arcade colour |
+|---|---|
+| 0 | `BLUE_GREEN` |
+| 1 | `PURPLE` |
+| 2 | `ORANGE` |
+| 3 | `CYAN` |
+| 4 | `SKY_BLUE` |
+| 5 | `ROSE` |
+| 6 | `SPRING_GREEN` |
+| 7 | `TURQUOISE` |
+| 8 | `YELLOW_ORANGE` |
+| 9 | `PASTEL_PINK` |
+| 10 | `BANANA_YELLOW` |
+| 11 | `LIGHT_CORAL` |
+
+Slots wrap around for graphs with more than twelve constellations. One exception overrides the palette entirely: any star whose JSON has `"hypergiant": true` is always drawn in **gold** (`arcade.color.GOLD`), making it immediately recognisable regardless of which constellation it belongs to. Star G in the bundled `Constellations.json` is the only hypergiant in the default data set.
+
+## Edge States
+
+Every edge weight dictionary carries a `blocked` flag initialised to `False` by `load_graph()`. The flag is toggled at runtime by `GraphController.toggle_edge(from_label, to_label)`, which flips the boolean on both half-edges simultaneously. `GraphView.draw_graph()` inspects the flag while rendering each line:
+
+| State | Colour | Meaning |
+|---|---|---|
+| `blocked: False`, not highlighted | White | Normal traversable edge |
+| `blocked: True` | Red | Blocked — skipped by Dijkstra and impassable to the donkey |
+| Part of the active highlighted path | Yellow | Most recent shortest or longest path result |
+
+Blocked edges remain in the graph's adjacency list; they are not removed. Dijkstra simply skips any edge whose weight dict has `"blocked": true` during the relaxation step, so toggling an edge on or off takes effect immediately the next time a path is computed without requiring a graph reload.

@@ -1,0 +1,210 @@
+---
+title: "Graph and Vertex — Weighted Graph Data Model"
+sidebarTitle: "Graph & Vertex"
+description: "Graph and Vertex implement a weighted undirected graph. Graph manages the vertex collection; Vertex stores its adjacency dict keyed by neighbour label."
+---
+
+`Graph` and `Vertex` are the core data model powering all controllers and algorithms in Constellations. Together they implement a weighted, undirected graph using an adjacency-dictionary approach: each `Vertex` holds a dict mapping neighbour labels to edge weights, and `Graph` acts as the top-level registry that creates vertices and wires them together. Every traversal, pathfinding, and simulation feature in the project operates on an instance of `Graph`.
+
+---
+
+## Vertex
+
+`Vertex` represents a single node in the graph — typically a star in the constellation map. It stores the node's identifier, an optional properties dict, and its adjacency mapping.
+
+### Constructor
+
+```python
+Vertex(id, data=None)
+```
+
+<ParamField path="id" type="any" required>
+  The unique label for this vertex (e.g. a star name or integer index). Used as the key in `Graph.vertex_list` and in every adjacency dict of neighbouring vertices.
+</ParamField>
+
+<ParamField path="data" type="dict | None" default="None">
+  An optional dictionary of arbitrary properties attached to this vertex. In the Constellations project this is typically a star-properties dict (e.g. `{"name": "Sirius", "hypergiant": False}`). Defaults to an empty dict `{}` when not supplied.
+</ParamField>
+
+**Instance attributes set by the constructor**
+
+| Attribute  | Type   | Description                                          |
+|------------|--------|------------------------------------------------------|
+| `id`       | any    | The vertex label passed at construction.             |
+| `data`     | dict   | Star-properties dict (empty `{}` if none provided).  |
+| `adjacent` | dict   | Maps neighbour `id` → edge weight. Starts empty.     |
+
+---
+
+### Methods
+
+#### `add_neighbor(neighbor, weight=0)`
+
+Registers `neighbor` as an adjacent node with the given `weight`.
+
+<ParamField path="neighbor" type="any" required>
+  The `id` of the neighbouring vertex.
+</ParamField>
+
+<ParamField path="weight" type="any" default="0">
+  The edge weight to store. In this project, weights are dicts (see note below), but the method accepts any value.
+</ParamField>
+
+**Returns:** `None`
+
+---
+
+#### `get_connections()` → `dict`
+
+Returns the full adjacency dictionary: `{neighbour_id: weight, ...}`.
+
+**Returns:** `dict`
+
+---
+
+#### `get_id()` → `any`
+
+Returns the vertex's identifier (`self.id`).
+
+**Returns:** `any`
+
+---
+
+### Full class source
+
+```python {expandable}
+class Vertex:
+    def __init__(self, id, data=None):
+        self.id = id
+        self.adjacent = {}
+        self.data = data or {}
+
+    def add_neighbor(self, neighbor, weight=0):
+        self.adjacent[neighbor] = weight
+
+    def get_connections(self):
+        return self.adjacent
+
+    def get_id(self):
+        return self.id
+```
+
+---
+
+## Graph
+
+`Graph` is the top-level container. It holds a dict of all `Vertex` objects and exposes helpers to add vertices, create edges, and look up nodes by label.
+
+### Constructor
+
+```python
+Graph()
+```
+
+No arguments are required. The constructor initialises two attributes:
+
+| Attribute     | Type   | Description                                        |
+|---------------|--------|----------------------------------------------------|
+| `vertex_list` | dict   | Maps vertex `id` → `Vertex` instance.              |
+| `num_vertex`  | int    | Running count of vertices added (starts at `0`).   |
+
+---
+
+### Methods
+
+#### `add_vertex(id, data=None)` → `Vertex`
+
+Adds a new vertex for `id` if it does not already exist, incrementing `num_vertex`. If the vertex already exists and `data` is provided, its `data` attribute is updated in place. Always returns the `Vertex` object.
+
+<ParamField path="id" type="any" required>
+  Label for the vertex to add or update.
+</ParamField>
+
+<ParamField path="data" type="dict | None" default="None">
+  Property dict to attach to the vertex. Ignored when the vertex already exists and `data` is `None`.
+</ParamField>
+
+**Returns:** `Vertex`
+
+---
+
+#### `add_edge(from_id, to_id, weight=0)`
+
+Creates an undirected edge between `from_id` and `to_id` with the given `weight`. If either vertex does not exist it is created automatically via `add_vertex`. Calls `add_neighbor` on **both** sides to maintain the undirected invariant.
+
+<ParamField path="from_id" type="any" required>
+  Label of the source vertex.
+</ParamField>
+
+<ParamField path="to_id" type="any" required>
+  Label of the destination vertex.
+</ParamField>
+
+<ParamField path="weight" type="any" default="0">
+  Value stored on both half-edges. Typically a dict in this project (see note below).
+</ParamField>
+
+**Returns:** `None`
+
+---
+
+#### `get_vertex(id)` → `Vertex | None`
+
+Looks up a vertex by its label. Returns `None` when `id` is not present.
+
+<ParamField path="id" type="any" required>
+  The label of the vertex to retrieve.
+</ParamField>
+
+**Returns:** `Vertex | None`
+
+---
+
+#### `get_vertices()` → `KeysView`
+
+Returns a live view of all vertex labels currently stored in `vertex_list`.
+
+**Returns:** `KeysView` (equivalent to `dict.keys()`)
+
+---
+
+### Full class source
+
+```python {expandable}
+class Graph:
+    def __init__(self):
+        self.vertex_list = {}
+        self.num_vertex = 0
+
+    def add_vertex(self, id, data=None):
+        if id not in self.vertex_list:
+            self.num_vertex += 1
+            new_vertex = Vertex(id, data)
+            self.vertex_list[id] = new_vertex
+            return new_vertex
+        else:
+            v = self.vertex_list[id]
+            if data:
+                v.data = data
+            return v
+
+    def get_vertex(self, id):
+        return self.vertex_list.get(id)
+
+    def add_edge(self, from_id, to_id, weight=0):
+        if from_id not in self.vertex_list:
+            self.add_vertex(from_id)
+        if to_id not in self.vertex_list:
+            self.add_vertex(to_id)
+        self.vertex_list[from_id].add_neighbor(to_id, weight)
+        self.vertex_list[to_id].add_neighbor(from_id, weight)
+
+    def get_vertices(self):
+        return self.vertex_list.keys()
+```
+
+---
+
+<Note>
+  Edge weights in Constellations are **dicts**, not plain numbers. A typical weight passed to `add_edge` looks like `{"distance": 5, "blocked": False}`. The `weight` parameter on both `add_edge` and `add_neighbor` accepts any value, so this convention is purely by project agreement rather than enforced by the class.
+</Note>

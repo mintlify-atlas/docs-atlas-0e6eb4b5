@@ -1,0 +1,160 @@
+---
+title: "BaseReturn and DataAndMsgReturn Response Objects"
+sidebarTitle: "Returnings"
+description: "BaseReturn and DataAndMsgReturn are lightweight response containers used by all model methods. Check .ok for success and .error for failure details."
+---
+
+Every method in Constellations that can fail returns either a `BaseReturn` or its subclass `DataAndMsgReturn`. This pattern avoids exception propagation across the call stack and makes it straightforward to check success or failure inline — callers inspect `.ok`, read an optional `.error` string, and (for `DataAndMsgReturn`) access structured `.data` and a human-readable `.msg`. Both classes live in `src/models/Returnings.py` and are imported throughout the model and controller layers.
+
+---
+
+## BaseReturn
+
+`BaseReturn` is the minimal response container. It carries a single boolean flag and an optional error value.
+
+```python
+from typing import Any
+
+class BaseReturn:
+    def __init__(self, ok: bool = True, error: Any | None = None):
+        self.ok = ok
+        self.error = error
+
+    def __str__(self):
+        return f'OK: {self.ok}\nError: {self.error}'
+
+    def to_dict(self):
+        return {
+            "ok": self.ok,
+            "error": self.error
+        }
+```
+
+### Attributes
+
+<ResponseField name="ok" type="bool" default="True">
+  `True` when the operation succeeded; `False` on any failure. Defaults to `True`, so a freshly created `BaseReturn()` represents success until explicitly set otherwise.
+</ResponseField>
+
+<ResponseField name="error" type="Any | None" default="None">
+  Describes the failure when `ok` is `False`. Typically a string (e.g. `"Not enough energy for travel"`), but the type annotation accepts any value. `None` on success.
+</ResponseField>
+
+### Methods
+
+#### `to_dict()` → `dict`
+
+Returns a plain dictionary representation of the response.
+
+**Returns:**
+
+```python
+{
+    "ok":    bool,        # current value of self.ok
+    "error": Any | None   # current value of self.error
+}
+```
+
+#### `__str__()`
+
+Returns a formatted two-line string for quick debugging:
+
+```
+OK: True
+Error: None
+```
+
+---
+
+## DataAndMsgReturn
+
+`DataAndMsgReturn` extends `BaseReturn` with a human-readable message and an optional structured payload. It is used by methods that need to surface both a result object and a description of what happened (e.g. `FilesUtils.read_json`).
+
+```python
+class DataAndMsgReturn(BaseReturn):
+    def __init__(self, ok: bool = True, msg: str = '', data: dict | None = None, error: Any | None = None):
+        super().__init__(ok, error)
+        self.msg = msg
+        self.data = data
+
+    def __str__(self):
+        return f'{super().__str__()}\nMessage: {self.msg}\nData: {self.data}\nError: {self.error}'
+
+    def to_dict(self):
+        return {
+            **super().to_dict(),
+            "msg":  self.msg,
+            "data": self.data if self.data else {},
+        }
+```
+
+### Additional Attributes
+
+<ResponseField name="msg" type="str" default="''">
+  A human-readable summary of the operation result (e.g. `"Traveled 10 units"` or `"Ate 5kg grass, recovered 20% energy"`). Empty string on failure unless explicitly set.
+</ResponseField>
+
+<ResponseField name="data" type="dict | None" default="None">
+  Structured payload returned by the operation. `to_dict()` substitutes an empty dict `{}` when `data` is `None`, so callers can always safely iterate the result.
+</ResponseField>
+
+### Methods
+
+#### `to_dict()` → `dict`
+
+Merges the parent `BaseReturn.to_dict()` output with `msg` and `data`.
+
+**Returns:**
+
+```python
+{
+    "ok":    bool,
+    "error": Any | None,
+    "msg":   str,
+    "data":  dict        # {} when data is None
+}
+```
+
+---
+
+## Usage Pattern
+
+Check `.ok` immediately after any model call. On failure, `.error` contains a description. On success, `.msg` describes what happened.
+
+```python
+result = donkey.travel(10)
+if not result.ok:
+    print(f"Travel failed: {result.error}")
+else:
+    print(result.msg)  # e.g. "Traveled 10 units"
+```
+
+The same pattern applies to any method that returns `BaseReturn`:
+
+```python
+health_result = donkey.set_health_status(45.0)
+if not health_result.ok:
+    print("Health update failed:", health_result.error)
+```
+
+---
+
+## FilesUtils Usage
+
+`FilesUtils.read_json` returns a `DataAndMsgReturn`, giving callers both a success flag and the parsed data in a single object:
+
+```python
+response = FilesUtils.read_json('src/data/Constellations.json')
+if response.error:
+    print('Load failed:', response.error)
+else:
+    data = response.data  # parsed dict
+```
+
+Because `to_dict()` always returns `{}` instead of `None` for an absent `data` field, you can safely access `response.data` without an extra `None` guard after confirming `response.ok`.
+
+---
+
+<Note>
+  `ok` defaults to `True` in both classes. A freshly instantiated `BaseReturn()` or `DataAndMsgReturn()` is a **success** response until you explicitly set `response.ok = False`. Methods in Constellations always set `ok = False` before returning an error, so you never need to pre-initialise a failure object.
+</Note>

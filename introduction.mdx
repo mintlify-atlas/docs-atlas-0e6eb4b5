@@ -1,0 +1,96 @@
+---
+title: "Constellations: Navigate Stars with Graph Algorithms"
+sidebarTitle: "Introduction"
+description: "Python + Arcade game where a donkey navigates weighted star graphs via Dijkstra or DFS longest-path, spending energy, health, and grass at every step."
+---
+
+Constellations is the second project of the Data Structures course at UCALDAS (2025-2). Built entirely in Python using the [Arcade](https://api.arcade.academy/) game library, it transforms abstract graph-theory concepts — vertices, weighted edges, shortest-path and depth-first search algorithms — into an interactive visual simulation you can run on your desktop. The project is designed as an educational tool that makes algorithmic trade-offs tangible: every routing decision has a direct, visible consequence on the agent navigating the graph.
+
+## Core Metaphor
+
+Stars in the night sky serve as **graph vertices**. The glowing lines connecting them — the constellation edges — are **weighted connections** whose weight represents the distance (and therefore the cost) of travelling between two stars. A donkey is the resource-constrained agent that traverses this graph. It carries three finite resources — **energy**, **health**, and a supply of **grass** — all of which are consumed with every edge traversal and every star visit. Choosing the wrong path depletes those resources before the destination is reached, while a hypergiant star along the route can grant a health bonus that extends the journey. The simulation ends when the donkey arrives at the target star, or when it runs out of resources and dies.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Weighted Undirected Graph" icon="diagram-project">
+    Stars and edges are loaded from a JSON file. Each edge carries a `distance` weight used by both routing algorithms. The graph is undirected, so every connection is navigable in both directions.
+  </Card>
+  <Card title="Dijkstra Shortest-Path" icon="route">
+    The "Ruta más corta" mode runs a classic Dijkstra algorithm to find the minimum-distance path between the chosen start and end stars, ignoring resource constraints.
+  </Card>
+  <Card title="DFS Longest-Path with Resource Constraints" icon="paw">
+    The "Ruta más larga" mode uses a depth-first search to find the longest reachable path given the donkey's current energy, health, and grass reserves. The route terminates early if the donkey dies en route.
+  </Card>
+  <Card title="Interactive Arcade GUI" icon="window">
+    An 800 × 620 resizable Arcade window renders the star graph, animates the donkey sprite along the computed path, and displays live resource bars for energy, health, age, and grass.
+  </Card>
+  <Card title="Edge Blocking & Unblocking" icon="ban">
+    Any edge in the graph can be toggled blocked or unblocked at runtime via `GraphController.toggle_edge()`, letting you experiment with how path-finding adapts to a changing graph topology.
+  </Card>
+  <Card title="Hypergiant Star Events" icon="star">
+    Stars flagged `"hypergiant": true` in the JSON grant the donkey a +10 health bonus when visited during the DFS longest-path traversal, rewarding routes that pass through special nodes.
+  </Card>
+  <Card title="JSON-Driven Graph Loading" icon="file-code">
+    The default constellation is bundled at `src/data/Constellations.json`. Any compatible JSON file can be loaded at runtime using the "Cargar JSON" button in the menu without restarting the application.
+  </Card>
+  <Card title="Death-Cause Tracking" icon="skull">
+    The `Donkey` model records the exact cause of death — health depletion, energy depletion, or starvation — and exposes it through `get_death_cause()` so the UI can display a meaningful game-over message.
+  </Card>
+</CardGroup>
+
+## Project Structure
+
+The repository follows a clean MVC-style layout that separates models, controllers, views, and static assets:
+
+```
+Constellations/
+├── run.py                        # Entry point — instantiates Main and calls start()
+├── requirements.txt              # Python dependencies (arcade==3.3.3)
+└── src/
+    ├── main.py                   # Main class: wires together references and launches Interface
+    ├── data/
+    │   └── Constellations.json   # Default star-graph definition
+    ├── models/
+    │   ├── Donkey.py             # Donkey agent: travel(), eat_at_star(), research_at_star()
+    │   ├── Graph.py              # Adjacency-list graph with vertex_list
+    │   ├── Operation.py          # Generic operation wrapper
+    │   ├── Returnings.py         # BaseReturn response objects
+    │   └── Work.py               # Work/task model
+    ├── controllers/
+    │   ├── GraphController.py    # Loads JSON, exposes shortest/longest-path helpers
+    │   ├── Dijkstra.py           # dijkstra_simple() implementation
+    │   ├── LongestPathWithDonkey.py  # DFS longest-path with resource checks
+    │   ├── DonkeyViewController.py   # Controls donkey sprite movement in the view
+    │   ├── GameViewController.py     # Orchestrates game-loop events
+    │   └── WidgetLayoutController.py # Positions HUD widgets
+    ├── ui/
+    │   ├── interface.py          # Creates the Arcade Window (800 × 620) and first view
+    │   └── views/
+    │       ├── MenuView.py       # Start menu: JSON loader, input boxes, algorithm buttons
+    │       ├── GameView.py       # Main game view: renders graph and animates traversal
+    │       ├── GraphView.py      # Pure graph-rendering sub-view
+    │       └── DonkeyView.py     # Donkey sprite and stats overlay
+    ├── assets/
+    │   ├── img/                  # PNG sprites: donkey, energy, grass, health, age, etc.
+    │   └── sounds/
+    │       └── donkey_death.wav  # Plays when the donkey's resources are exhausted
+    └── utils/
+        ├── Files.py              # FilesUtils.read_json() for safe file I/O
+        ├── Storage.py            # Persistent state helpers
+        └── Validators.py         # Input validation utilities
+```
+
+## Dependencies
+
+Constellations has a single third-party dependency declared in `requirements.txt`:
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+| `arcade` | `3.3.3` | 2-D game framework for window management, sprite rendering, and the game loop |
+
+Python 3.x (3.9 or newer recommended) is required. No additional packages are needed — the standard library covers JSON parsing, file dialogs (`tkinter`), and all other utilities used by the project.
+
+<Note>
+Constellations is released under the **GNU General Public License v3.0 (GPL-3.0)**. You are free to use, study, modify, and distribute the project, provided that any derivative work is also distributed under the same license. See the `LICENSE` file in the repository root for the full terms.
+</Note>

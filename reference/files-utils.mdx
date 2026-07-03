@@ -1,0 +1,176 @@
+---
+title: "FilesUtils — JSON and File I/O Utilities"
+sidebarTitle: "FilesUtils"
+description: "FilesUtils is a static-method utility class for reading and writing files and JSON. All methods return BaseReturn or DataAndMsgReturn to avoid exception propagation."
+---
+
+`FilesUtils` in `src/utils/Files.py` provides all file I/O for the Constellations project. Every method is `@staticmethod` and returns a structured response object — either `BaseReturn` or `DataAndMsgReturn` — rather than raising exceptions to the caller. This makes `FilesUtils` safe to invoke directly inside UI callbacks and controller methods without wrapping calls in `try/except` blocks.
+
+## Response Objects
+
+Two return types are used across all methods:
+
+| Class | Fields | Used when |
+|---|---|---|
+| `BaseReturn` | `ok: bool`, `error: Any \| None` | Write operations where only success/failure matters |
+| `DataAndMsgReturn` | `ok`, `error`, `msg: str`, `data: dict \| None` | Read operations that must carry back file contents |
+
+Both classes expose a `to_dict()` helper and a `__str__` representation for logging.
+
+---
+
+## Methods
+
+### file_exists
+
+```python
+@staticmethod
+def file_exists(filename: str) -> bool
+```
+
+Returns `True` if the path points to an existing regular file, using `pathlib.Path.is_file()`.
+
+<ParamField path="filename" type="str" required>
+  Relative or absolute path to check.
+</ParamField>
+
+---
+
+### open_file
+
+```python
+@staticmethod
+def open_file(filename: str, mode: str = 'r', encoding: str = 'utf-8') -> TextIOWrapper | None
+```
+
+Opens and returns a file handle. When `mode='r'`, `file_exists` is checked first; if the file is absent, `None` is returned immediately. When `mode='w'`, Python creates the file automatically if it does not exist.
+
+<ParamField path="filename" type="str" required>
+  Path to the file to open.
+</ParamField>
+
+<ParamField path="mode" type="str" default="'r'">
+  Standard Python file mode. `'r'` for read, `'w'` for overwrite, `'a'` for append.
+</ParamField>
+
+<ParamField path="encoding" type="str" default="'utf-8'">
+  Character encoding passed to the built-in `open()`.
+</ParamField>
+
+---
+
+### read_file
+
+```python
+@staticmethod
+def read_file(filename: str) -> DataAndMsgReturn
+```
+
+Opens the file in read mode, reads its entire contents, and returns a `DataAndMsgReturn` where `data` is the raw string content. If `open_file` returns `None` (file missing), `data` remains `None`.
+
+<ParamField path="filename" type="str" required>
+  Path to the text file to read.
+</ParamField>
+
+---
+
+### read_json
+
+```python
+@staticmethod
+def read_json(filename: str) -> DataAndMsgReturn
+```
+
+Calls `read_file`, then parses the result with `json.loads`. On a JSON parse error, `response.error` is set to the exception and `response.data` remains `None`. If the file does not exist, `response.msg` is set to a human-readable message and `response.data` is `None`.
+
+<ParamField path="filename" type="str" required>
+  Path to the `.json` file to read and parse.
+</ParamField>
+
+---
+
+### write_file
+
+```python
+@staticmethod
+def write_file(filename: str, data: str, mode: str = 'w') -> BaseReturn
+```
+
+Writes `data` to `filename`. The `mode` parameter must be either `'w'` (overwrite) or `'a'` (append); any other value causes `response.ok = False` and `response.error = "The mode isn't valid!"`. Any OS-level exception during the write is caught and stored in `response.error`.
+
+<ParamField path="filename" type="str" required>
+  Destination file path. Created automatically if it does not exist (when using `'w'` or `'a'`).
+</ParamField>
+
+<ParamField path="data" type="str" required>
+  String content to write.
+</ParamField>
+
+<ParamField path="mode" type="str" default="'w'">
+  Must be `'w'` (overwrite) or `'a'` (append).
+</ParamField>
+
+---
+
+### write_json
+
+```python
+@staticmethod
+def write_json(filename: str, data: dict) -> BaseReturn
+```
+
+Serialises `data` to `filename` using `json.dump` with `indent=2`, `sort_keys=True`, and `ensure_ascii=False`. Returns a `BaseReturn`; on failure, `ok` is `False` and `error` contains the exception message.
+
+<ParamField path="filename" type="str" required>
+  Destination file path for the serialised JSON.
+</ParamField>
+
+<ParamField path="data" type="dict" required>
+  The Python dictionary to serialise.
+</ParamField>
+
+---
+
+### get_filename_from_path
+
+```python
+@staticmethod
+def get_filename_from_path(path: str) -> str
+```
+
+Extracts and returns the file name (including extension) from a full path string, using `pathlib.Path(path).name`.
+
+<ParamField path="path" type="str" required>
+  Any relative or absolute file path string.
+</ParamField>
+
+---
+
+## Example: Loading a Graph JSON
+
+```python
+from src.utils.Files import FilesUtils
+
+response = FilesUtils.read_json('src/data/Constellations.json')
+if response.error:
+    print('Error:', response.error)
+else:
+    constellations = response.data['constellations']
+    print(f'{len(constellations)} constellation(s) loaded')
+```
+
+---
+
+## Example: Writing a Log File
+
+```python
+result = FilesUtils.write_file('src/data/run.log', 'Journey started\n', mode='a')
+if not result.ok:
+    print('Write failed:', result.error)
+```
+
+---
+
+<Note>
+  `write_json` uses `ensure_ascii=False` so that constellation names containing non-ASCII characters — such as Spanish accented letters (e.g. *Ío*, *Cáncer*) — are written verbatim rather than being replaced with `\uXXXX` escape sequences. This keeps the JSON file human-readable and diff-friendly in version control.
+</Note>

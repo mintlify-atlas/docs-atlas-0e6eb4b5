@@ -1,0 +1,162 @@
+---
+title: "Donkey Resource System and Health States"
+sidebarTitle: "Donkey Mechanics"
+description: "The donkey manages energy, health, grass, and age across the graph. Learn how travel costs, eating, research, and death conditions work in the simulation."
+---
+
+The donkey is the resource-constrained agent that traverses the constellation graph. It is initialised from the top-level fields of `Constellations.json` — `burroenergiaInicial` (starting energy), `estadoSalud` (health label), `pasto` (grass in kg), and `startAge` (age in years). As it moves between stars, each step deducts from its resources according to the edge distance. Letting any resource reach a critical threshold ends the simulation.
+
+## Resources
+
+The donkey tracks four independent resources, each representing a different dimension of survival:
+
+**`energy_donkey` (0–100 %)**
+The donkey's kinetic fuel. Every traversal of an edge reduces energy proportionally to the edge distance. Once energy reaches zero the donkey can no longer move and is considered dead.
+
+**`health_percent` (0–100 %)**
+A measure of physical condition. It degrades with every travel step and can be partially restored by eating at a star or by landing on a hypergiant. Falling to zero is an immediate death condition.
+
+**`grass_stored` (kg)**
+The donkey's food supply. Grass is consumed both during travel and when eating at a star. Running out of grass while energy is already below 10 % triggers starvation.
+
+**`age` (years)**
+Modified by researching at stars. Some stars add years (`ageImpact > 0`), others subtract them (`ageImpact < 0`). Age does not directly cause death but is tracked as a simulation outcome metric.
+
+## Health States
+
+Health percentage is continuously mapped to one of five named states defined in the `HealthType` enum inside `src/models/Donkey.py`. The mapping is evaluated every time `set_health_status()` is called.
+
+```python
+class HealthType(Enum):
+    EXCELLENT = (1, 'Excellent', 100)
+    GOOD      = (2, 'Good',      75)
+    BAD       = (3, 'Bad',       50)
+    DYING     = (4, 'Dying',     25)
+    DEAD      = (5, 'Dead',       0)
+```
+
+| State | Percent range | Meaning |
+|---|---|---|
+| `Excellent` | 76–100 | Full health; no restrictions |
+| `Good` | 51–75 | Healthy; cannot eat (eating requires health < 50 %) |
+| `Bad` | 26–50 | Degraded; eating is now permitted |
+| `Dying` | 1–25 | Critical; eating is permitted and strongly advisable |
+| `Dead` | 0 | Terminal; all actions are blocked |
+
+## Travel Costs
+
+Before moving along an edge the simulation calls `get_travel_cost(distance)` to project the cost of the trip. The method accepts either a plain number or a weight dictionary (the format stored in `Vertex.adjacent`).
+
+```python
+def get_travel_cost(self, distance: float) -> dict:
+    real_distance = distance["distance"] if isinstance(distance, dict) else distance
+    return {
+        'energy_cost':    real_distance,
+        'health_cost':    real_distance,
+        'grass_required': real_distance,
+    }
+```
+
+Each resource is consumed at a **1 : 1 ratio with edge distance**. A trip along an edge of length 6 therefore costs 6 % energy, 6 % health, and 6 kg of grass. The actual `travel()` method applies the same ratios during the move and additionally caps all values at zero to prevent negative resources:
+
+```python
+def travel(self, distance: float) -> BaseReturn:
+    real_distance = distance["distance"] if isinstance(distance, dict) else distance
+    energy_consumption = real_distance * 0.1
+    grass_consumption  = real_distance * 0.02
+    # ...
+    self.energy_donkey = max(0, self.energy_donkey - energy_consumption)
+    self.grass_stored  = max(0, self.grass_stored  - grass_consumption)
+    health_deterioration = real_distance * 0.05
+    new_health_percent   = max(0, self.health_percent - health_deterioration)
+    self.set_health_status(new_health_percent)
+```
+
+<Note>
+  `get_travel_cost()` and `travel()` use different internal multipliers (`1×` vs `0.1×` / `0.05×` / `0.02×`). The `get_travel_cost()` method uses the **conservative 1 : 1** projection used by the longest-path DFS to determine whether a branch is worth exploring; `travel()` applies the **lower real-world** deductions during actual simulation movement.
+</Note>
+
+## Eating at a Star
+
+A donkey can eat at a star only when its health is below 50 % and above 0 % (the `can_eat()` guard). The star's `timeToEat` field is deducted from `grass_stored`, and `amountOfEnergy` is added to `energy_donkey` (always treated as a positive gain). Landing on a hypergiant provides a bonus +10 health on top of the normal energy recovery.
+
+```python
+def eat_at_star(self, star_data: dict) -> BaseReturn:
+    if not self.can_eat():          # health must be 0 < h < 50
+        response.ok = False
+        response.error = "Donkey cannot eat in current health state"
+        return response
+
+    time_to_eat = star_data.get('timeToEat', 0)
+    if self.grass_stored < time_to_eat:
+        # not enough grass — starvation path
+        self.grass_stored = 0
+        self.is_dead()
+        return response
+
+    self.grass_stored -= time_to_eat
+    energy_gain = abs(star_data.get('amountOfEnergy', 0))
+    self.energy_donkey = min(100, self.energy_donkey + energy_gain)
+
+    if star_data.get('hypergiant', False):
+        new_health = min(100, self.health_percent + 10)   # hypergiant bonus
+        self.set_health_status(new_health)
+```
+
+## Researching at a Star
+
+Researching costs energy (`energyPerResearchTime × researchTime`) and applies the star's `healthImpact` and `ageImpact` directly to the donkey. Health impact can be positive (beneficial research) or negative (taxing research). Age impact follows the same sign convention.
+
+```python
+def research_at_star(self, star_data: dict) -> BaseReturn:
+    research_time     = star_data.get('researchTime', 0)
+    energy_per_time   = star_data.get('energyPerResearchTime', 0)
+    health_impact     = star_data.get('healthImpact', 0)
+    age_impact        = star_data.get('ageImpact', 0)
+
+    energy_cost = (research_time / 1) * energy_per_time if research_time > 0 else 0
+
+    if self.energy_donkey < energy_cost:
+        self.energy_donkey = 0
+        self.is_dead()
+        return response
+
+    self.energy_donkey = max(0, self.energy_donkey - energy_cost)
+    new_health = max(0, min(100, self.health_percent + health_impact))
+    self.set_health_status(new_health)
+    self.age = max(0, self.age + age_impact)
+```
+
+For example, star G in the default data set has `researchTime: 1`, `energyPerResearchTime: 2`, `healthImpact: 10`, and `ageImpact: 3` — a costly but health-positive research stop that adds three years.
+
+## Death Conditions
+
+`is_dead()` checks three independent conditions in order. The first condition that evaluates to `True` sets `death_cause` and returns immediately.
+
+```python
+def is_dead(self) -> bool:
+    if self.health_percent <= 0:
+        self.death_cause = "Health depleted"
+        return True
+    elif self.energy_donkey <= 0:
+        self.death_cause = "Energy depleted"
+        return True
+    elif self.grass_stored <= 0 and self.energy_donkey < 10:
+        self.death_cause = "Starvation (no grass)"
+        return True
+    else:
+        self.death_cause = None
+        return False
+```
+
+| # | Condition | `death_cause` |
+|---|---|---|
+| 1 | `health_percent <= 0` | `"Health depleted"` |
+| 2 | `energy_donkey <= 0` | `"Energy depleted"` |
+| 3 | `grass_stored <= 0` **and** `energy_donkey < 10` | `"Starvation (no grass)"` |
+
+The starvation check (condition 3) combines two signals: grass has run out *and* energy is critically low. A donkey with no grass but plenty of energy is not immediately dead — it can still travel short distances. Once energy also drops below 10 %, however, there is no recovery path and the simulation ends.
+
+<Warning>
+  All three death conditions must be evaluated before every travel step. `is_dead()` is called by `travel()`, `eat_at_star()`, and `research_at_star()`, as well as by `set_health_status()`. Skipping this check can allow the donkey to take an action that would leave it in an impossible state.
+</Warning>

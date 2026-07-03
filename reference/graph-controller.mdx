@@ -1,0 +1,191 @@
+---
+title: "GraphController — Graph Loading and Path Queries"
+sidebarTitle: "GraphController"
+description: "GraphController wraps the Graph model with JSON loading, path computation, and edge-toggling. It is the primary interface between the UI layer and the graph algorithms."
+---
+
+GraphController is the central service object of the Constellations application. It holds the active `Graph` instance, delegates to `dijkstra_simple` and `LongestPathWithDonkey` for path computation, and maintains the `highlight_edges` list consumed by GraphView to draw highlighted connections on screen. All file I/O is performed through `FilesUtils`, keeping the controller free of direct filesystem concerns.
+
+## Constructor
+
+```python
+GraphController()
+```
+
+Initialises the three core attributes used throughout the object's lifetime:
+
+| Attribute | Type | Initial value |
+|---|---|---|
+| `self.graph` | `Graph` | Empty `Graph()` instance |
+| `self.filename` | `str \| None` | `None` |
+| `self.highlight_edges` | `list` | `[]` |
+
+---
+
+## Methods
+
+### load_graph
+
+Reads a JSON file from disk via `FilesUtils.read_json`, builds an `id → label` mapping, then calls `add_vertex` and `add_edge` to populate `self.graph`.
+
+<ParamField path="filename" type="str" required>
+  Path to the JSON file containing the constellation graph data (e.g. `"src/data/Constellations.json"`).
+</ParamField>
+
+**Returns** `bool` — `True` on success; `False` if the file is missing, unreadable, or the JSON does not contain a `"constellations"` key.
+
+```python
+def load_graph(self, filename):
+    """Carga un grafo desde un JSON."""
+    response = FilesUtils.read_json(filename)
+    if response.error:
+        print("❌ Error al cargar:", response.error)
+        return False
+
+    data = response.data
+    if "constellations" not in data:
+        print("⚠️ JSON no tiene constellations")
+        return False
+
+    self.filename = filename
+    self.graph = Graph()
+
+    # Crear mapa id → label
+    id_to_label = {}
+    for constellation in data["constellations"]:
+        for star in constellation["starts"]:
+            id_to_label[star["id"]] = star["label"]
+            self.graph.add_vertex(star["label"], star)
+
+    # Conectar con labels
+    for constellation in data["constellations"]:
+        for star in constellation["starts"]:
+            origen = star["label"]
+            for link in star["linkedTo"]:
+                destino = id_to_label[link["starId"]]
+                self.graph.add_edge(origen, destino, {
+                    "distance": link["distance"],
+                    "blocked": False
+                })
+    print(f"✅ Grafo cargado con {len(self.graph.vertex_list)} estrellas (labels).")
+    return True
+```
+
+---
+
+### get_graph
+
+Returns the currently loaded `Graph` instance.
+
+**Returns** `Graph` — the active graph held in `self.graph`.
+
+---
+
+### get_json_data
+
+Re-reads the original JSON file from `self.filename` and returns the parsed dictionary without modifying `self.graph`.
+
+**Returns** `dict | None` — the parsed JSON object, or `None` if `self.filename` is not set or the file cannot be read.
+
+---
+
+### reload_graph
+
+Reloads the graph from the most recently loaded file. Falls back to `"src/data/Constellations.json"` if `self.filename` is `None`.
+
+**Returns** `bool` — result of the underlying `load_graph` call.
+
+---
+
+### add_star
+
+Adds a single vertex to the graph before or after a game session begins.
+
+<ParamField path="id" type="any" required>
+  The label used as the vertex key inside the graph.
+</ParamField>
+
+<ParamField path="data" type="dict" required>
+  Arbitrary metadata associated with the star (coordinates, type, etc.).
+</ParamField>
+
+**Returns** `None`.
+
+---
+
+### toggle_edge
+
+Flips the `blocked` flag on the edge running from `from_label` to `to_label`. Because edges are stored directionally, only the specified direction is toggled; call the method a second time with arguments reversed to toggle the reverse direction.
+
+<ParamField path="from_label" type="str" required>
+  Label of the source vertex.
+</ParamField>
+
+<ParamField path="to_label" type="str" required>
+  Label of the destination vertex.
+</ParamField>
+
+**Returns** `None`. Prints a warning if the edge does not exist.
+
+---
+
+### get_shortest_path
+
+Runs Dijkstra's algorithm between two star labels and stores the resulting edge list in `self.highlight_edges`.
+
+<ParamField path="start" type="any" required>
+  Label of the starting vertex.
+</ParamField>
+
+<ParamField path="end" type="any" required>
+  Label of the destination vertex.
+</ParamField>
+
+**Returns** `tuple[dict, dict, list]`:
+- `dist` — mapping from vertex label to shortest distance from `start`
+- `pred` — mapping from vertex label to its predecessor on the shortest path
+- `path` — ordered list of vertex labels from `start` to `end`
+
+---
+
+### get_shortest_path_avoiding
+
+Builds a filtered subgraph that excludes all vertices in `forbidden` (except `start` and `end`), then runs `dijkstra_simple` on that subgraph. Stores the result in `self.highlight_edges`.
+
+<ParamField path="start" type="any" required>
+  Label of the starting vertex. Always included even if present in `forbidden`.
+</ParamField>
+
+<ParamField path="end" type="any" required>
+  Label of the destination vertex. Always included even if present in `forbidden`.
+</ParamField>
+
+<ParamField path="forbidden" type="set" default="set()">
+  Set of vertex labels to exclude from the subgraph. Defaults to an empty set (equivalent to a normal shortest-path query).
+</ParamField>
+
+**Returns** `tuple[dict, dict, list]` — same structure as `get_shortest_path`.
+
+---
+
+### get_longest_path_with_donkey
+
+Instantiates `LongestPathWithDonkey` with the current graph and the supplied `Donkey`, then calls `find_longest_path`. Stores the result edge list in `self.highlight_edges`.
+
+<ParamField path="start" type="any" required>
+  Label of the vertex from which the DFS begins.
+</ParamField>
+
+<ParamField path="donkey" type="Donkey" required>
+  A `Donkey` instance carrying the initial resource values (energy, health, grass).
+</ParamField>
+
+**Returns** `tuple[list, float]`:
+- `best_path` — ordered list of vertex labels representing the longest viable route
+- `max_distance` — total distance of that route
+
+---
+
+<Note>
+  `highlight_edges` is populated after every path computation (`get_shortest_path`, `get_shortest_path_avoiding`, and `get_longest_path_with_donkey`). It holds a list of `(from_label, to_label)` tuples and is read by GraphView to draw yellow highlighted edges over the constellation map. It is reset to `[]` when no path could be found.
+</Note>

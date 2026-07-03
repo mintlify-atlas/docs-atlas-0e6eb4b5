@@ -1,0 +1,86 @@
+---
+title: "Menu Controls and Path Mode Selection"
+sidebarTitle: "Menu & Modes"
+description: "Load a constellation JSON, enter start and end stars, then choose shortest-path (Dijkstra) or longest-path (DFS) mode to begin the donkey's journey."
+---
+
+The main menu is the entry point for every simulation run. It opens automatically when the 800×620 Arcade window titled **"Spatial Donkey - Graphs"** launches, and lets you configure the full path before the donkey begins its journey. Nothing happens until you fill in the start and end star labels and choose a mode — every field must be completed before a run can begin.
+
+## Window Layout
+
+The menu background is rendered in dark slate blue. The following elements are drawn top-to-bottom:
+
+| Element | Position (center) | Description |
+|---|---|---|
+| **"Menú Inicial"** title | Top of screen | White bold text at 28 pt |
+| **Cargar JSON** button | y = 360 | Opens a file picker to load a custom constellation JSON |
+| **Inicio** input field | y = 300 | Text field for the starting star label (e.g. `"A"`) |
+| **Fin** input field | y = 220 | Text field for the destination star label (e.g. `"H"`) |
+| **Ruta más corta** button | y = 150 | Launches shortest-path (Dijkstra) mode |
+| **Ruta más larga** button | y = 90 | Launches longest-path (DFS) mode |
+
+Both text fields display an outline that turns **green** (`arcade.color.AO`) when active and **white** when inactive. The button backgrounds are also rendered in `arcade.color.AO`. If an error occurs — such as a missing input or an invalid star label — a red error message is drawn below the buttons.
+
+## Entering Star Labels
+
+Clicking inside the **Inicio** or **Fin** box activates it; the border changes from white to green to indicate focus. Any subsequent keystrokes append characters to that field. All input is automatically converted to uppercase via `text.upper()`, so typing `"a"` records `"A"`. Pressing **Backspace** removes the last character from the active field.
+
+Both fields must be non-empty and must correspond to labels that actually exist in the currently-loaded graph before a mode button will work. If either field is blank, or if the label is not found in `graph.vertex_list`, the menu shows a ⚠️ error message and returns without opening `GameView`.
+
+<Tip>
+  Star labels are single uppercase letters by default (e.g. `A`–`H`), but a JSON file can define any string as a label. Always check the `"label"` field of each star object in your JSON to know which values are valid inputs.
+</Tip>
+
+## Shortest Path Mode
+
+Clicking **Ruta más corta** (or the `Enter` key) calls `_start_game(mode="dijkstra")`. The following sequence runs immediately:
+
+1. `current_mode = "dijkstra"` is set on `main_runner`.
+2. `graph_controller.get_shortest_path(start, end)` runs Dijkstra's algorithm and returns `(dist, pred, path)`.
+3. The result is packaged as `dijkstra_data = {'dist': dist, 'pred': pred, 'path': path, 'mode': 'dijkstra'}` and passed to `GameView`.
+4. `window.show_view(game_view)` switches the display to the graph simulation.
+
+In Dijkstra mode, **mouse-clicking any edge** in `GameView` calls `graph_controller.toggle_edge(from_label, to_label)`, toggling that edge's `blocked` state in real time. Red edges are blocked; white edges are passable; yellow edges are highlighted as part of the current path.
+
+## Longest Path Mode
+
+Clicking **Ruta más larga** calls `_start_game(mode="longest")`. The sequence is:
+
+1. `current_mode = "longest"` is set on `main_runner`.
+2. A fresh `Donkey` is created with the fixed starting stats shown below:
+
+```python
+donkey = Donkey(
+    x=0, y=0,
+    age=12,
+    energy_donkey=100,
+    health=100,
+    grass=300,
+    sprite='src/assets/img/donkey.png'
+)
+```
+
+3. `graph_controller.get_longest_path_with_donkey(start, donkey)` runs a depth-first search that accounts for the donkey's resource constraints, returning `(path, dist)`.
+4. The result is packaged as `{'path': path, 'dist': dist, 'mode': 'longest'}` and passed to `GameView`.
+
+Edge-click blocking is **disabled** in longest-path mode. The `on_mouse_press` handler in `GameView` checks `main_runner.current_mode` and returns early if it is not `"dijkstra"`.
+
+## Loading a Custom JSON
+
+Clicking **Cargar JSON** opens a native OS file picker via the following flow in `_load_graph_json()`:
+
+```python
+root = tk.Tk()
+root.withdraw()  # hide the blank Tk window
+
+file_path = filedialog.askopenfilename(
+    title="Seleccionar archivo JSON del grafo",
+    filetypes=[("Archivos JSON", "*.json")]
+)
+```
+
+The `root.withdraw()` call ensures that no extra empty window appears on screen — only the system file-picker dialog is shown.
+
+- If the user cancels without selecting a file, `error_message` is set to `"⚠️ No seleccionaste ningún archivo."`.
+- If a file is chosen, `graph_controller.load_graph(file_path)` is called. On **success**, `error_message` becomes `"✅ Grafo cargado correctamente."` (displayed in red since it shares the error label, but visually indicates success). On **failure**, the message becomes `"❌ No se pudo cargar el archivo."`.
+- After a successful load, `self.graph` is refreshed from `graph_controller.graph` so new star labels are immediately available for validation.

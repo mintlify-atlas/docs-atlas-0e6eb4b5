@@ -1,0 +1,121 @@
+---
+title: "Hypergiant Stars: Teleportation and Resource Bonuses"
+sidebarTitle: "Hypergiant Stars"
+description: "Hypergiant stars offer a teleport dialog. The donkey gains energy and grass bonuses, then jumps to any reachable star on a freshly recalculated route."
+---
+
+Hypergiant stars — marked `"hypergiant": true` in the constellation JSON and rendered in gold — trigger a unique event when the donkey arrives. Unlike ordinary stars, hypergiants offer the donkey an opportunity to teleport to any reachable star in the graph, instantly recalculating the remaining route from that new position. This makes them powerful tactical waypoints, especially in long-path strategies where the donkey's resources may already be under pressure.
+
+## Identifying Hypergiant Stars
+
+To mark a star as hypergiant, set the boolean field on its object in the JSON file:
+
+```json
+{
+  "label": "D",
+  "hypergiant": true,
+  "coordenates": { "x": 420, "y": 310 },
+  "timeToEat": 3,
+  "researchTime": 2
+}
+```
+
+In `_process_star_activities()`, the controller checks:
+
+```python
+if current_star.data.get("hypergiant") is True:
+    ...
+```
+
+Hypergiant stars are rendered in **gold** instead of the constellation's default colour, making them easy to spot on the graph canvas before the journey begins. There is no fixed limit on how many hypergiant stars a constellation can contain — any number of stars in a JSON file can carry the `"hypergiant": true` flag.
+
+## The Hypergiant Event
+
+When the donkey arrives at a hypergiant star, the following sequence runs inside `_process_star_activities()` and `_hypergiant_decision()`:
+
+<Steps>
+  <Step title="Arrival dialog">
+    The donkey arrives at the hypergiant star. Travel and status-bar updates have already completed. A `DialogComponent` appears with the prompt:
+
+    ```
+    "Hypergiant star at {label}. Jump to new location?"
+    ```
+  </Step>
+  <Step title="Player chooses NO">
+    If the player clicks **NO** (`dialog_closed_status = False`), `_hypergiant_decision()` calls:
+
+    ```python
+    self.show_toast("Continuing route", 2.0)
+    arcade.schedule_once(lambda dt: self.walk_road(road, vertex_index + 1), 1.0)
+    ```
+
+    The donkey continues along the original path from the next index, with no bonus and no teleport.
+  </Step>
+  <Step title="Player chooses YES — resource bonus">
+    If the player clicks **YES** (`dialog_closed_status = True`), `_hypergiant_travel()` is called immediately:
+
+    ```python
+    donkey.energy_donkey = min(100, donkey.energy_donkey * 1.5)
+    donkey.grass_stored *= 2
+    self._update_status_bars()
+    ```
+
+    Energy is boosted by 50%, capped at 100. Grass is doubled with no cap. Status bars refresh immediately.
+  </Step>
+  <Step title="Destination input dialog">
+    A second `DialogComponent` opens with `require_input=True`, asking:
+
+    ```
+    "Enter destination star:"
+    ```
+
+    The player types a star label into the `UIInputText` field and clicks the OK button.
+  </Step>
+  <Step title="Input retrieval and validation">
+    When the dialog closes, `_choose_new_destination()` reads the typed label from `view.last_dialog_input` and converts it to uppercase. If the value is empty or the label does not exist in `graph.vertex_list`, an error dialog is shown and teleportation is cancelled.
+  </Step>
+  <Step title="Path recalculation and teleport">
+    The donkey's sprite is moved to the coordinates of the new star immediately. Then `get_shortest_path_avoiding()` computes the onward route:
+
+    ```python
+    dist, pred, new_path = self.modules['graph_controller'].get_shortest_path_avoiding(
+        new_target, final_destination, forbidden=self.visited_stars
+    )
+    ```
+
+    The donkey follows `new_path` starting at index 1 after a 0.1-second delay.
+  </Step>
+</Steps>
+
+## Resource Bonus
+
+The full bonus code from `_hypergiant_travel()` is:
+
+```python
+donkey.energy_donkey = min(100, donkey.energy_donkey * 1.5)
+donkey.grass_stored *= 2
+```
+
+The energy cap of 100 prevents overflow. Grass has no upper bound, so a donkey that already carries a large grass reserve will double it. Both bars are refreshed via `_update_status_bars()` immediately after the bonus is applied, so the player sees the change before the destination dialog appears.
+
+## Path Recalculation
+
+After teleporting, the new route is computed with `get_shortest_path_avoiding()`, which accepts a `forbidden` set of already-visited star labels:
+
+```python
+dist, pred, new_path = self.modules['graph_controller'].get_shortest_path_avoiding(
+    new_target,           # the teleport destination
+    final_destination,    # the original end vertex from main_runner
+    forbidden=self.visited_stars
+)
+```
+
+`self.visited_stars` is a Python `set` that grows with every star the donkey arrives at during the current run (`visited_stars.add(star_label)` in `_handle_movement()`). Passing it as `forbidden` tells the path-finding algorithm to exclude those vertices from the subgraph entirely, so the donkey never backtracks through a star it has already visited after a teleport.
+
+<Note>
+  The destination input dialog is a `DialogComponent` instantiated with `require_input=True`. This causes a `UIInputText` widget to be added to the dialog layout. When the dialog closes, the component reads `UIInputText.text` and assigns it to `view.last_dialog_input` via `setattr`. The controller then reads it back with `getattr(self.view, "last_dialog_input", None)`.
+</Note>
+
+<Tip>
+  Use hypergiant stars strategically when the donkey's energy or grass is running low and the remaining path has several expensive edges. The 1.5× energy and 2× grass bonus is applied **before** the donkey travels to the new star, giving it a full top-up before facing the recalculated route. Positioning a hypergiant near the midpoint of a long constellation maximises the benefit.
+</Tip>

@@ -1,0 +1,254 @@
+---
+title: "Shortest and Longest Path Algorithms Explained"
+sidebarTitle: "Path Algorithms"
+description: "Constellations uses Dijkstra for shortest paths and a DFS longest-path finder constrained by donkey resources. Compare both algorithm approaches here."
+---
+
+Constellations supports two complementary path-finding modes that serve different gameplay goals. **Shortest path** (via Dijkstra's algorithm) answers "what is the most efficient route from star A to star B?" — useful when the donkey's resources are low and every unit of distance matters. **Longest path** (via a depth-first search constrained by the donkey's live resource state) answers "how far can the donkey travel before it dies?" — the core challenge of the simulation. Understanding both algorithms, and where they diverge, is essential for working with the game's controller layer.
+
+## Dijkstra's Algorithm
+
+`dijkstra_simple` lives in `src/controllers/Dijkstra.py` and operates directly on a `Graph` instance.
+
+```python
+import math
+
+def dijkstra_simple(graph, start_id, target_id):
+    dist = {v: math.inf for v in graph.get_vertices()}
+    pred = {v: None for v in graph.get_vertices()}
+    dist[start_id] = 0
+    no_visitados = set(graph.get_vertices())
+
+    while no_visitados:
+        u = min(no_visitados, key=lambda v: dist[v])
+        if dist[u] == math.inf:
+            break
+        no_visitados.remove(u)
+
+        if u == target_id:
+            break
+
+        for v, data in graph.get_vertex(u).get_connections().items():
+            # Skip blocked edges
+            if data.get("blocked", False):
+                continue
+
+            weight = data["distance"]
+            if v in no_visitados:
+                nueva_dist = dist[u] + weight
+                if nueva_dist < dist[v]:
+                    dist[v] = nueva_dist
+                    pred[v] = u
+
+    path = []
+    actual = target_id
+    while actual is not None:
+        path.insert(0, actual)
+        actual = pred[actual]
+
+    return dist, pred, path
+```
+
+The function initialises every vertex's tentative distance to `math.inf` and the source's distance to `0`. On each iteration it picks the unvisited vertex `u` with the smallest tentative distance using `min()` over a set, removes it from the unvisited pool, and relaxes all of its outgoing edges. Early exit fires as soon as `target_id` is dequeued. The return value is a triple `(dist, pred, path)`:
+
+| Return value | Type | Description |
+|---|---|---|
+| `dist` | `dict[label, float]` | Shortest distance from `start_id` to every reachable vertex |
+| `pred` | `dict[label, label \| None]` | Predecessor map used to reconstruct the path |
+| `path` | `list[label]` | Ordered list of vertex labels from `start_id` to `target_id` |
+
+## Blocked Edge Handling
+
+Dijkstra respects the `blocked` flag stored in every edge's weight dictionary. During the relaxation loop, before reading `data["distance"]`, the algorithm checks:
+
+```python
+if data.get("blocked", False):
+    continue
+```
+
+If the flag is `True` the neighbour is skipped entirely for this iteration — it is not relaxed and not recorded as a predecessor. Because `toggle_edge()` in `GraphController` flips both half-edges of an undirected pair at once, blocking an edge makes it impassable in both directions the next time `dijkstra_simple` is called. No graph reload is required; the change is live immediately.
+
+This mechanism is how the GUI's click-to-block feature influences path computation: a blocked edge drawn in red will never appear in a shortest-path result.
+
+## Shortest Path with Forbidden Vertices
+
+`GraphController.get_shortest_path_avoiding()` extends the basic Dijkstra call to handle the scenario where certain stars must be bypassed — for example, when a hypergiant teleports the donkey and already-visited stars should not be re-entered.
+
+```python
+def get_shortest_path_avoiding(self, start, end, forbidden=set()):
+    # start and end are always allowed even if they appear in forbidden
+    forbidden = set(forbidden) - {start, end}
+    filtered_graph = Graph()
+
+    # Copy vertices, excluding forbidden ones
+    for label, vertex in self.graph.vertex_list.items():
+        if label not in forbidden:
+            filtered_graph.add_vertex(label, vertex.data)
+
+    # Copy edges that connect only non-forbidden vertices
+    for label, vertex in self.graph.vertex_list.items():
+        if label in forbidden:
+            continue
+        for neighbor, weight in vertex.adjacent.items():
+            if neighbor not in forbidden:
+                filtered_graph.add_edge(label, neighbor, weight)
+
+    dist, pred, path = dijkstra_simple(filtered_graph, start, end)
+
+    self.highlight_edges = [
+        (path[i], path[i + 1]) for i in range(len(path) - 1)
+    ]
+    return dist, pred, path
+```
+
+Rather than modifying the original graph, the method constructs a temporary `filtered_graph` in memory that omits forbidden vertices and all edges incident to them. `start` and `end` are explicitly excluded from the forbidden set so the route always has valid endpoints. `dijkstra_simple` then runs on this subgraph, and the resulting highlighted edges are stored for rendering by `GraphView`.
+
+## DFS Longest Path
+
+`LongestPathWithDonkey` in `src/controllers/LongestPathWithDonkey.py` uses a recursive depth-first search to find the longest path the donkey can walk before its resources are exhausted.
+
+```python
+from copy import deepcopy
+
+class LongestPathWithDonkey:
+    def __init__(self, graph, donkey):
+        self.graph = graph
+        self.donkey = donkey
+        self.best_path = []
+        self.max_distance = 0
+
+    def _can_travel(self, donkey, distance):
+        """Check whether the donkey can survive a trip of `distance` units."""
+        cost = donkey.get_travel_cost(distance)
+        enough_energy = (donkey.energy_donkey - cost.get("energy_cost", 0)) > 0
+        enough_health = (donkey.get_health_percent() - cost.get("health_cost", 0)) > 0
+        enough_grass  = (donkey.grass_stored - cost.get("grass_required", 0)) > 0
+        return enough_energy and enough_health and enough_grass
+
+    def _dfs(self, current, donkey, path, total_dist):
+        """Recursive DFS — explores every viable branch from `current`."""
+        path.append(current)
+
+        if total_dist > self.max_distance:
+            self.max_distance = total_dist
+            self.best_path = path.copy()
+
+        for neighbor, data in self.graph.vertex_list[current].adjacent.items():
+            if neighbor not in path:                  # no revisiting vertices
+                distance = data["distance"]
+                d_copy = deepcopy(donkey)             # branch-isolated state
+                if self._can_travel(d_copy, distance):
+                    travel_result = d_copy.travel(distance)
+                    if travel_result.ok or not d_copy.is_dead():
+                        self._dfs(neighbor, d_copy, path, total_dist + distance)
+
+        path.pop()                                    # backtrack
+
+    def find_longest_path(self, start):
+        """Public entry point — returns (best_path, max_distance)."""
+        self.best_path = []
+        self.max_distance = 0
+        self._dfs(start, deepcopy(self.donkey), [], 0)
+        return self.best_path, self.max_distance
+```
+
+Key design decisions in the DFS:
+
+- **`deepcopy` at every branch.** Each recursive call receives its own copy of the donkey so that backtracking one branch does not corrupt the resource state of a sibling branch.
+- **Pre-travel feasibility check.** `_can_travel()` is called with `get_travel_cost()` before `travel()` is invoked, acting as a pruning guard. Branches where the donkey would die mid-edge are discarded without ever mutating the donkey copy.
+- **Visited-set via the path list.** Instead of a separate set, the current `path` list itself is used to detect cycles (`if neighbor not in path`).
+- **Global best tracking.** `self.best_path` and `self.max_distance` are updated whenever `total_dist` surpasses the current record, so the longest prefix found across all explored branches is always preserved even if the DFS never reaches a dead end.
+
+## Complexity Notes
+
+Both algorithms operate on the same `Graph` data structure but have very different cost profiles.
+
+`dijkstra_simple` selects the minimum-distance unvisited vertex using `min()` over a plain Python `set`. This avoids the overhead of a priority queue but means every relaxation round scans all remaining unvisited vertices. The result is **O(V²)** time in the worst case rather than the O((V + E) log V) you would get with a binary heap. For the small star graphs shipped with the game (8–11 vertices in the default file) this makes no practical difference.
+
+The DFS longest-path finder is equivalent to finding the **longest simple path** in a weighted graph, which is NP-hard in the general case. The exponential worst-case complexity is acceptable here because the constellation graphs are intentionally small (tens of vertices at most), and the donkey's resource constraints prune the search tree aggressively — most branches are cut after just a few hops.
+
+---
+
+<Tabs>
+  <Tab title="Dijkstra">
+    ```python
+    import math
+
+    def dijkstra_simple(graph, start_id, target_id):
+        dist = {v: math.inf for v in graph.get_vertices()}
+        pred = {v: None for v in graph.get_vertices()}
+        dist[start_id] = 0
+        no_visitados = set(graph.get_vertices())
+
+        while no_visitados:
+            u = min(no_visitados, key=lambda v: dist[v])
+            if dist[u] == math.inf:
+                break
+            no_visitados.remove(u)
+
+            if u == target_id:
+                break
+
+            for v, data in graph.get_vertex(u).get_connections().items():
+                if data.get("blocked", False):
+                    continue
+                weight = data["distance"]
+                if v in no_visitados:
+                    nueva_dist = dist[u] + weight
+                    if nueva_dist < dist[v]:
+                        dist[v] = nueva_dist
+                        pred[v] = u
+
+        path = []
+        actual = target_id
+        while actual is not None:
+            path.insert(0, actual)
+            actual = pred[actual]
+
+        return dist, pred, path
+    ```
+  </Tab>
+  <Tab title="Longest Path">
+    ```python
+    from copy import deepcopy
+
+    class LongestPathWithDonkey:
+        def __init__(self, graph, donkey):
+            self.graph = graph
+            self.donkey = donkey
+            self.best_path = []
+            self.max_distance = 0
+
+        def _can_travel(self, donkey, distance):
+            cost = donkey.get_travel_cost(distance)
+            enough_energy = (donkey.energy_donkey - cost.get("energy_cost", 0)) > 0
+            enough_health = (donkey.get_health_percent() - cost.get("health_cost", 0)) > 0
+            enough_grass  = (donkey.grass_stored - cost.get("grass_required", 0)) > 0
+            return enough_energy and enough_health and enough_grass
+
+        def _dfs(self, current, donkey, path, total_dist):
+            path.append(current)
+
+            if total_dist > self.max_distance:
+                self.max_distance = total_dist
+                self.best_path = path.copy()
+
+            for neighbor, data in self.graph.vertex_list[current].adjacent.items():
+                if neighbor not in path:
+                    distance = data["distance"]
+                    d_copy = deepcopy(donkey)
+                    if self._can_travel(d_copy, distance):
+                        travel_result = d_copy.travel(distance)
+                        if travel_result.ok or not d_copy.is_dead():
+                            self._dfs(neighbor, d_copy, path, total_dist + distance)
+
+            path.pop()
+
+        def find_longest_path(self, start):
+            self.best_path = []
+            self.max_distance = 0
+            self._dfs(start, deepcopy(self.donkey), [], 0)
+            return self.best_path, self.max_distance
+    ```
+  </Tab>
+</Tabs>

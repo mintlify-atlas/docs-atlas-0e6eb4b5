@@ -1,47 +1,166 @@
 ---
-title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+title: "Get Started with Constellations"
+sidebarTitle: "Quickstart"
+description: "Clone, install Arcade, and run Constellations in four steps. Includes a minimal 3-star JSON template to get your first graph simulation running fast."
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
+This guide walks you through everything you need to go from a blank terminal to a running Constellations simulation. By the end you will have the Arcade window open, a star graph rendered on screen, and a donkey ready to traverse it using either Dijkstra's shortest-path or DFS longest-path algorithm.
 
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
+<Warning>
+Always run `python run.py` from the **project root directory** (`Constellations/`). Launching the script from inside `src/` or any subdirectory breaks the relative import paths used throughout the package and will raise a `ModuleNotFoundError`.
+</Warning>
 
-## Prerequisites
-
-Before you begin, you must have:
-
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
-
-## Get started
+## Installation
 
 <Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
+  <Step title="Clone the repository">
+    Open a terminal and clone the project from GitHub:
 
     ```bash
-    npm install your-package
+    git clone https://github.com/tutosrive/Constellations.git
     ```
   </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
+
+  <Step title="Enter the project directory">
+    Navigate into the newly cloned folder:
 
     ```bash
-    your-cli init
+    cd Constellations
     ```
   </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
+
+  <Step title="Install dependencies">
+    Install the single required package using pip:
 
     ```bash
-    your-cli start
+    pip install -r requirements.txt
+    ```
+
+    The `requirements.txt` file contains exactly one entry:
+
+    ```
+    arcade==3.3.3
+    ```
+
+    Arcade 3.3.3 bundles everything needed for window management, sprite rendering, and the game loop. No other third-party packages are required.
+  </Step>
+
+  <Step title="Run the project">
+    Launch the simulation from the project root:
+
+    ```bash
+    python run.py
+    ```
+
+    The entry point is intentionally minimal — it creates a `Main` instance and calls `start()`, which wires all controllers together and hands off to Arcade's event loop:
+
+    ```python
+    from src.main import Main
+
+    def run():
+        app = Main()
+        app.start()
+
+    if __name__ == '__main__':
+        run()
     ```
   </Step>
 </Steps>
 
-<Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
+## Verifying the Launch
 
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
+A successful launch opens an **800 × 620 pixel** resizable window titled **"Spatial Donkey - Graphs"**, centred on your primary display. The opening screen is the `MenuView`, which contains:
+
+- A **"Cargar JSON"** button at the top for loading a custom constellation file.
+- Two text input boxes labelled **"Inicio"** (start star) and **"Fin"** (end star), where you type the letter labels of your chosen stars (e.g. `A`, `G`).
+- A **"Ruta más corta"** button that runs Dijkstra's algorithm and animates the shortest path.
+- A **"Ruta más larga"** button that runs the DFS longest-path search with donkey resource constraints.
+
+Click a text box to activate it (its border turns green), type the star label, then press one of the two route buttons. If a node label does not exist in the loaded graph, an error message appears in red beneath the buttons.
+
+## Your First Graph
+
+Constellations reads its star graph from a JSON file. The default graph ships at `src/data/Constellations.json`, but you can craft your own. Below is the minimal structure for a three-star constellation — the simplest graph you can load:
+
+```json
+{
+  "constellations": [
+    {
+      "name": "Mini Constellation",
+      "starts": [
+        {
+          "id": 1,
+          "label": "A",
+          "linkedTo": [
+            { "starId": 2, "distance": 4 },
+            { "starId": 3, "distance": 7 }
+          ],
+          "radius": 0.4,
+          "timeToEat": 2,
+          "amountOfEnergy": 3,
+          "researchTime": 2,
+          "energyPerResearchTime": 1,
+          "healthImpact": 0,
+          "ageImpact": 1,
+          "coordenates": { "x": 200, "y": 300 },
+          "hypergiant": false
+        },
+        {
+          "id": 2,
+          "label": "B",
+          "linkedTo": [
+            { "starId": 1, "distance": 4 },
+            { "starId": 3, "distance": 5 }
+          ],
+          "radius": 0.5,
+          "timeToEat": 3,
+          "amountOfEnergy": 2,
+          "researchTime": 1,
+          "energyPerResearchTime": 2,
+          "healthImpact": 5,
+          "ageImpact": -1,
+          "coordenates": { "x": 400, "y": 200 },
+          "hypergiant": true
+        },
+        {
+          "id": 3,
+          "label": "C",
+          "linkedTo": [
+            { "starId": 1, "distance": 7 },
+            { "starId": 2, "distance": 5 }
+          ],
+          "radius": 0.6,
+          "timeToEat": 2,
+          "amountOfEnergy": 4,
+          "researchTime": 3,
+          "energyPerResearchTime": 1,
+          "healthImpact": -3,
+          "ageImpact": 2,
+          "coordenates": { "x": 600, "y": 350 },
+          "hypergiant": false
+        }
+      ]
+    }
+  ],
+  "burroenergiaInicial": 100,
+  "estadoSalud": "Excellent",
+  "pasto": 300,
+  "startAge": 12,
+  "deathAge": 3567
+}
+```
+
+### Top-Level Field Reference
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `constellations` | array | One or more named groups of stars. Stars across different constellations can still be linked by `starId`. |
+| `burroenergiaInicial` | number | The donkey's starting energy level (0–100). Depleted by `distance × 0.1` per edge traversal. |
+| `estadoSalud` | string | Initial health label — `"Excellent"`, `"Good"`, `"Bad"`, or `"Dying"`. Maps to a starting `health_percent` value. |
+| `pasto` | number | Starting grass supply in kg. Each edge traversal consumes `distance × 0.02` kg; eating at a star consumes `timeToEat` kg. |
+| `startAge` | number | The donkey's age at the beginning of the simulation. Modified by each star's `ageImpact` during research. |
+| `deathAge` | number | The maximum age the donkey can reach before dying of old age. |
+
+<Tip>
+You do not need to restart the application to test a new graph. Click **"Cargar JSON"** in the menu to open a native file-picker dialog, select any `.json` file that matches the schema above, and the graph is hot-swapped immediately — the star labels in the input boxes update to reflect the new node set.
 </Tip>

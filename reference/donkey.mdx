@@ -1,0 +1,262 @@
+---
+title: "Donkey — Resource-Constrained Traversal Agent"
+sidebarTitle: "Donkey"
+description: "Donkey models the traversal agent with energy, health, grass, and age resources. Covers constructor, travel, eating, research, health states, and death detection methods."
+---
+
+The `Donkey` class is the core simulation entity in Constellations. It encapsulates all resource state — position, health, energy, stored grass, and age — and exposes the methods that `GameView` and `DonkeyViewController` call on every traversal step. Rather than raising exceptions on failure, every mutating method returns a `BaseReturn` so callers can check success or read a descriptive error inline.
+
+---
+
+## HealthType Enum
+
+`HealthType` is an `Enum` defined in `Donkey.py` that maps named health bands to a display string and a numeric percentage. The Donkey's `health_status` attribute always holds one of these values.
+
+| Value       | Text        | Percent |
+|-------------|-------------|---------|
+| `EXCELLENT` | `Excellent` | `100`   |
+| `GOOD`      | `Good`      | `75`    |
+| `BAD`       | `Bad`       | `50`    |
+| `DYING`     | `Dying`     | `25`    |
+| `DEAD`      | `Dead`      | `0`     |
+
+Each member exposes two extra attributes set in `__init__`: `.text` (the display string) and `.percent` (the numeric threshold).
+
+---
+
+## Constructor
+
+```python
+Donkey(x, y, age, energy_donkey, health, grass, sprite)
+```
+
+Initialises all resource fields and immediately calls `set_health_status(health)` to derive the starting `health_status` enum member.
+
+<ParamField path="x" type="int" required>
+  Horizontal grid coordinate of the donkey's starting position.
+</ParamField>
+
+<ParamField path="y" type="int" required>
+  Vertical grid coordinate of the donkey's starting position.
+</ParamField>
+
+<ParamField path="age" type="int" required>
+  Starting age in simulation years. Modified by `research_at_star` via `ageImpact`.
+</ParamField>
+
+<ParamField path="energy_donkey" type="float" required>
+  Starting energy level (0–100). Consumed by travel and research; replenished by eating.
+</ParamField>
+
+<ParamField path="health" type="float" required>
+  Starting health percentage (0–100). Passed directly to `set_health_status` during construction.
+</ParamField>
+
+<ParamField path="grass" type="float" required>
+  Starting stored-grass reserve in kg. Consumed by travel and eating actions.
+</ParamField>
+
+<ParamField path="sprite" type="Any" required>
+  Sprite or display object used by the view layer. Stored as-is; not used by any model logic.
+</ParamField>
+
+---
+
+## Methods
+
+### `is_dead()` → `bool`
+
+Checks three mutually exclusive death conditions in order. Sets `self.death_cause` as a side-effect when a condition is met, or clears it to `None` when the donkey is alive.
+
+| Condition | `death_cause` set |
+|---|---|
+| `health_percent <= 0` | `"Health depleted"` |
+| `energy_donkey <= 0` | `"Energy depleted"` |
+| `grass_stored <= 0` **and** `energy_donkey < 10` | `"Starvation (no grass)"` |
+
+**Returns:** `bool`
+
+---
+
+### `get_death_cause()` → `dict`
+
+Returns a snapshot of the donkey's state at the time of the call. Calls `is_dead()` internally to decide which branch to use.
+
+**Returns:** `dict` with keys:
+
+| Key      | Type  | Description                                         |
+|----------|-------|-----------------------------------------------------|
+| `cause`  | str   | `"Alive"` if living, otherwise the death string.    |
+| `energy` | float | Current energy (floored at 0 if dead).              |
+| `health` | float | Current health percent (floored at 0 if dead).      |
+| `age`    | int   | Current age.                                        |
+| `grass`  | float | Current grass reserve (floored at 0 if dead).       |
+
+---
+
+### `set_health_status(percent)` → `BaseReturn`
+
+Validates `percent` and updates both `health_percent` and `health_status`. After setting the value it calls `is_dead()` — if the donkey has just died, `response.ok` is set to `False`.
+
+<ParamField path="percent" type="float" required>
+  New health value. Must be in the range **0–100** (inclusive). Values outside this range produce a failed `BaseReturn` without mutating state.
+</ParamField>
+
+**Returns:** `BaseReturn` — `ok=False` with a descriptive `error` if percent is out of range or the donkey has died.
+
+---
+
+### `can_eat()` → `bool`
+
+Returns `True` when the donkey's health is in the range `0 < percent < 50`. A donkey at full health or already dead cannot eat.
+
+**Returns:** `bool`
+
+---
+
+### `travel(distance)` → `BaseReturn`
+
+Moves the donkey by `distance` units, consuming energy, grass, and health. Accepts either a raw number or a dict carrying a `"distance"` key (as produced by graph edge weights).
+
+<ParamField path="distance" type="float | dict" required>
+  Distance to travel. If a `dict`, the value at key `"distance"` is used. Pre-travel checks abort with `ok=False` if the donkey is already dead, or if energy or grass reserves are insufficient.
+</ParamField>
+
+**Resource consumption per unit of distance:**
+
+| Resource        | Formula             |
+|-----------------|---------------------|
+| `energy_donkey` | `distance × 0.1`    |
+| `grass_stored`  | `distance × 0.02`   |
+| `health_percent`| `distance × 0.05`   |
+
+**Returns:** `BaseReturn` — on success, `response.msg` is set to `"Traveled {distance} units"`.
+
+```python
+def travel(self, distance: float) -> BaseReturn:
+    response = BaseReturn()
+    real_distance = distance["distance"] if isinstance(distance, dict) else distance
+
+    if self.is_dead():
+        response.ok = False
+        response.error = f"Donkey is dead: {self.death_cause}"
+        return response
+
+    energy_consumption = real_distance * 0.1
+    grass_consumption = real_distance * 0.02
+
+    if self.energy_donkey < energy_consumption:
+        response.ok = False
+        response.error = "Not enough energy for travel"
+        self.energy_donkey = 0
+        self.is_dead()
+        return response
+
+    if self.grass_stored < grass_consumption:
+        response.ok = False
+        response.error = "Not enough grass for travel"
+        self.grass_stored = 0
+        self.is_dead()
+        return response
+
+    self.energy_donkey = max(0, self.energy_donkey - energy_consumption)
+    self.grass_stored = max(0, self.grass_stored - grass_consumption)
+
+    health_deterioration = real_distance * 0.05
+    new_health_percent = max(0, self.health_percent - health_deterioration)
+
+    health_result = self.set_health_status(new_health_percent)
+    if not health_result.ok:
+        response.ok = False
+        response.error = f"Health update failed: {health_result.error}"
+        return response
+
+    if self.is_dead():
+        response.ok = False
+        response.error = f"Donkey died during travel: {self.death_cause}"
+    else:
+        response.msg = f"Traveled {real_distance} units"
+
+    return response
+```
+
+---
+
+### `eat_at_star(star_data)` → `BaseReturn`
+
+Attempts to eat at the current star. Requires `can_eat()` to return `True`. Consumes `star_data["timeToEat"]` kg of stored grass and adds `star_data["amountOfEnergy"]` to `energy_donkey` (capped at 100). If the star is a hypergiant, health is boosted by 10 percentage points.
+
+<ParamField path="star_data" type="dict" required>
+  Star properties dict. Relevant keys:
+
+  | Key             | Type  | Description                                             |
+  |-----------------|-------|---------------------------------------------------------|
+  | `timeToEat`     | float | Grass cost in kg. Defaults to `0` if absent.            |
+  | `amountOfEnergy`| float | Energy gained. Negative values are made positive.       |
+  | `hypergiant`    | bool  | If `True`, grants +10 health percent after eating.      |
+</ParamField>
+
+**Returns:** `BaseReturn` — `ok=False` if the donkey is dead, cannot eat, or has insufficient grass.
+
+---
+
+### `research_at_star(star_data)` → `BaseReturn`
+
+Performs a research action at the current star. Consumes energy based on `researchTime` and `energyPerResearchTime`, then applies `healthImpact` and `ageImpact` to the donkey's state.
+
+<ParamField path="star_data" type="dict" required>
+  Star properties dict. Relevant keys:
+
+  | Key                    | Type  | Description                                          |
+  |------------------------|-------|------------------------------------------------------|
+  | `researchTime`         | float | Duration of research. Defaults to `0`.               |
+  | `energyPerResearchTime`| float | Energy consumed per unit of research time.           |
+  | `healthImpact`         | float | Delta applied to `health_percent` (can be negative). |
+  | `ageImpact`            | float | Delta applied to `age` (can be negative).            |
+</ParamField>
+
+**Returns:** `BaseReturn` — on success, `response.msg` describes how many years were gained or lost.
+
+---
+
+### `get_travel_cost(distance)` → `dict`
+
+Returns a preview of the resource costs for a given distance without mutating any state.
+
+<ParamField path="distance" type="float | dict" required>
+  Distance to cost-check. Accepts a raw number or a dict with a `"distance"` key.
+</ParamField>
+
+**Returns:** `dict`
+
+```python
+{
+    "energy_cost":    distance,   # equal to distance (current implementation)
+    "health_cost":    distance,
+    "grass_required": distance
+}
+```
+
+---
+
+### `to_dict()` → `dict`
+
+Serialises the donkey's current state to a plain dictionary suitable for JSON output or view rendering.
+
+**Returns:** `dict`
+
+| Key            | Type  | Description                                     |
+|----------------|-------|-------------------------------------------------|
+| `x`            | int   | Current x coordinate.                           |
+| `y`            | int   | Current y coordinate.                           |
+| `health`       | str   | `health_status.text` (e.g. `"Good"`).           |
+| `age`          | int   | Current age.                                    |
+| `energy_donkey`| float | Current energy level.                           |
+| `grass`        | float | Current grass reserve.                          |
+| `sprite`       | Any   | The sprite object passed at construction.       |
+
+---
+
+<Warning>
+  `eat_at_star` does **not** raise an exception when grass reserves are insufficient. Instead it sets `self.grass_stored = 0`, calls `self.is_dead()` to update `death_cause`, and returns a failed `BaseReturn` with `ok=False`. Always check `result.ok` after calling `eat_at_star` to detect this silent depletion.
+</Warning>

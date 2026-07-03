@@ -1,0 +1,133 @@
+---
+title: "Constellation JSON File Format and Schema"
+sidebarTitle: "JSON Schema"
+description: "The JSON file defines the entire graph topology, donkey starting state, and simulation parameters. Learn the top-level schema and how to structure multiple constellations."
+---
+
+The JSON file is the single source of truth for a Constellations run — it defines the graph topology across one or more constellation objects, sets the donkey's initial resources, and supplies the simulation parameters used by both the Dijkstra shortest-path and longest-path algorithms. Every time you load or reload a run, the engine reads this file from disk and rebuilds the graph from scratch.
+
+## Top-Level Fields
+
+<ParamField body="constellations" type="array" required>
+  Array of constellation objects. Each element describes one named group of stars and the edges that connect them. You may include as many constellations as you like; all stars are merged into a single graph at load time.
+</ParamField>
+
+<ParamField body="burroenergiaInicial" type="number" required>
+  The donkey's starting energy level, on a scale of **0–100**. This value is read at initialization time by `ViewDonkey._initialize_donkey()`. If the field is absent, the engine defaults to `100`.
+</ParamField>
+
+<ParamField body="estadoSalud" type="string" required>
+  The donkey's initial health state. Must be one of the five recognized strings: `"Excellent"`, `"Good"`, `"Bad"`, `"Dying"`, or `"Dead"`. Each string maps to a percentage internally (see [Donkey Parameters](/configuration/donkey-parameters) for the full mapping). If the field is absent, the engine defaults to `"Excellent"` (100 %).
+</ParamField>
+
+<ParamField body="pasto" type="number" required>
+  The donkey's initial grass supply in kilograms. Grass is consumed during both travel and eating actions. If the field is absent, the engine defaults to `300`.
+</ParamField>
+
+<ParamField body="startAge" type="number" required>
+  The donkey's starting age in years. Age can be increased or decreased by the `ageImpact` field on individual stars during research. If absent, the engine defaults to `12`.
+</ParamField>
+
+<ParamField body="deathAge" type="number">
+  An age threshold intended to cap the donkey's lifespan. This field is **not currently enforced** in any runtime logic and is reserved for future use. You may omit it without affecting behaviour.
+</ParamField>
+
+<ParamField body="number" type="number">
+  An unused identifier field present in the bundled templates. It has no effect on the simulation and may be safely omitted.
+</ParamField>
+
+## Constellation Object
+
+Each element of the `constellations` array is a plain object with two keys:
+
+| Key | Type | Description |
+|---|---|---|
+| `name` | string | Display name for the constellation, used internally for color assignment when rendering star groups. |
+| `starts` | array | Array of star objects that form the vertices of this constellation's subgraph. Note that the key is spelled **`starts`**, not `stars` — this is the canonical field name in the source data. |
+
+All stars across all constellations are loaded into the same `Graph` instance, so edges in `linkedTo` can reference star `id` values from any constellation in the file.
+
+## Full Example
+
+```json title="constellations_minimal.json"
+{
+  "constellations": [
+    {
+      "name": "Constelación del Donkey",
+      "starts": [
+        {
+          "id": 1,
+          "label": "A",
+          "linkedTo": [
+            { "starId": 2, "distance": 3 },
+            { "starId": 3, "distance": 5 }
+          ],
+          "radius": 0.4,
+          "timeToEat": 3,
+          "amountOfEnergy": 2,
+          "researchTime": 2,
+          "energyPerResearchTime": 1,
+          "healthImpact": -5,
+          "ageImpact": 1,
+          "coordenates": { "x": 220, "y": 400 },
+          "hypergiant": false
+        },
+        {
+          "id": 2,
+          "label": "B",
+          "linkedTo": [
+            { "starId": 1, "distance": 3 },
+            { "starId": 3, "distance": 5 }
+          ],
+          "radius": 0.3,
+          "timeToEat": 2,
+          "amountOfEnergy": 1,
+          "researchTime": 3,
+          "energyPerResearchTime": 2,
+          "healthImpact": 5,
+          "ageImpact": -2,
+          "coordenates": { "x": 330, "y": 300 },
+          "hypergiant": false
+        },
+        {
+          "id": 3,
+          "label": "C",
+          "linkedTo": [
+            { "starId": 1, "distance": 5 },
+            { "starId": 2, "distance": 5 }
+          ],
+          "radius": 0.6,
+          "timeToEat": 3,
+          "amountOfEnergy": 3,
+          "researchTime": 2,
+          "energyPerResearchTime": 2,
+          "healthImpact": 0,
+          "ageImpact": 1,
+          "coordenates": { "x": 430, "y": 420 },
+          "hypergiant": false
+        }
+      ]
+    }
+  ],
+  "burroenergiaInicial": 100,
+  "estadoSalud": "Excellent",
+  "pasto": 300,
+  "startAge": 12,
+  "deathAge": 3567,
+  "number": 123
+}
+```
+
+## Loading at Runtime
+
+In the application menu, clicking the **Cargar JSON** button opens a native file picker (backed by `tkinter.filedialog`). Once a path is selected, the UI calls `GraphController.load_graph()` with the chosen filename:
+
+```python
+controller.load_graph(filename)
+```
+
+`load_graph` delegates to `FilesUtils.read_json()` to parse the file, then iterates over every `constellations[*].starts` entry to register vertices and edges in the `Graph` instance. On success it prints the total number of loaded stars; on failure it returns `False` and logs the reason.
+
+<Note>
+  The file is parsed by `FilesUtils.read_json()`. Any JSON parse error is silently caught inside that utility and surfaced only as a message printed to the terminal — the UI will not display a pop-up. If your graph fails to load, check the terminal output for a line beginning with `❌ Error al cargar:`.
+</Note>

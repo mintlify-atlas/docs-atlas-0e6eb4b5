@@ -1,0 +1,145 @@
+---
+title: "dijkstra_simple — Single-Source Shortest Path"
+sidebarTitle: "dijkstra_simple"
+description: "dijkstra_simple(graph, start_id, target_id) computes the shortest path using Dijkstra's algorithm, respecting blocked edges. Returns distances, predecessors, and path list."
+---
+
+`dijkstra_simple` implements Dijkstra's algorithm on a `Graph` instance. It is a module-level function located in `src/controllers/Dijkstra.py` and is called by both `GraphController.get_shortest_path()` and `GraphController.get_shortest_path_avoiding()`. The function operates on a standard adjacency-list graph, processes vertices in order of their tentative distance, and stops as soon as the target vertex is dequeued — making it efficient for point-to-point queries on the sparse constellation graphs used in this project.
+
+## Signature
+
+```python
+import math
+
+def dijkstra_simple(graph, start_id, target_id):
+    """
+    Compute the shortest path from start_id to target_id in graph using
+    Dijkstra's algorithm. Edges whose 'blocked' flag is True are skipped.
+
+    Returns:
+        dist  (dict): shortest known distance from start_id to every vertex.
+        pred  (dict): predecessor map for path reconstruction.
+        path  (list): ordered vertex labels from start_id to target_id.
+    """
+```
+
+### Parameters
+
+<ParamField path="graph" type="Graph" required>
+  A loaded `Graph` instance. The function calls `graph.get_vertices()` to enumerate all vertex labels and `graph.get_vertex(u).get_connections()` to iterate over a vertex's neighbours and their edge metadata.
+</ParamField>
+
+<ParamField path="start_id" type="any" required>
+  The label of the starting vertex. Its initial distance is set to `0`; all others are initialised to `math.inf`.
+</ParamField>
+
+<ParamField path="target_id" type="any" required>
+  The label of the destination vertex. The main loop breaks early once `target_id` is selected as the minimum-distance unvisited vertex.
+</ParamField>
+
+---
+
+## Return Value
+
+<ResponseField name="dist" type="dict">
+  Maps every vertex label to its shortest known distance from `start_id`. Unreachable vertices retain the value `math.inf`.
+</ResponseField>
+
+<ResponseField name="pred" type="dict">
+  Maps every vertex label to its predecessor on the shortest path. The start vertex maps to `None`. Used to reconstruct the path by walking backwards from `target_id`.
+</ResponseField>
+
+<ResponseField name="path" type="list">
+  Ordered list of vertex labels from `start_id` to `target_id`, reconstructed by following `pred` from `target_id` back to `start_id` and then reversing. If `target_id` is unreachable, the list will still contain `target_id` but the chain will not extend all the way back to `start_id`.
+</ResponseField>
+
+---
+
+## Blocked Edge Handling
+
+During neighbour relaxation, the function checks each edge's metadata dict for the `"blocked"` flag before applying any distance update:
+
+```python
+for v, data in graph.get_vertex(u).get_connections().items():
+    # Skip edges that have been blocked by the user
+    if data.get("blocked", False):
+        continue
+    weight = data["distance"]
+    ...
+```
+
+If `"blocked"` is absent from the edge data it defaults to `False`, so all freshly created edges are traversable. Edges can be toggled at runtime via `GraphController.toggle_edge()`.
+
+---
+
+## Unreachable Targets
+
+If `target_id` cannot be reached from `start_id` (because all connecting edges are blocked, or no path exists), the main loop exits when the minimum remaining distance becomes `math.inf`:
+
+```python
+if dist[u] == math.inf:
+    break
+```
+
+In this case `dist[target_id]` remains `math.inf`. The path-reconstruction loop still runs, but because `pred[target_id]` is `None`, it produces `[target_id]` — a one-element list containing only the unreachable destination. Callers should check `dist[target_id] == math.inf` or `len(path) <= 1` to detect this condition.
+
+---
+
+## Full Implementation
+
+```python
+import math
+
+def dijkstra_simple(graph, start_id, target_id):
+    dist = {v: math.inf for v in graph.get_vertices()}
+    pred = {v: None for v in graph.get_vertices()}
+    dist[start_id] = 0
+    no_visitados = set(graph.get_vertices())
+
+    while no_visitados:
+        u = min(no_visitados, key=lambda v: dist[v])
+        if dist[u] == math.inf:
+            break
+        no_visitados.remove(u)
+
+        if u == target_id:
+            break
+
+        for v, data in graph.get_vertex(u).get_connections().items():
+            # Si la arista está bloqueada, saltarla
+            if data.get("blocked", False):
+                continue
+
+            weight = data["distance"]
+            if v in no_visitados:
+                nueva_dist = dist[u] + weight
+                if nueva_dist < dist[v]:
+                    dist[v] = nueva_dist
+                    pred[v] = u
+
+    path = []
+    actual = target_id
+    while actual is not None:
+        path.insert(0, actual)
+        actual = pred[actual]
+
+    return dist, pred, path
+```
+
+---
+
+## Example
+
+```python
+from src.controllers.Dijkstra import dijkstra_simple
+from src.models.Graph import Graph
+
+graph = Graph()
+graph.add_vertex('A')
+graph.add_vertex('B')
+graph.add_edge('A', 'B', {'distance': 5, 'blocked': False})
+
+dist, pred, path = dijkstra_simple(graph, 'A', 'B')
+print(path)       # ['A', 'B']
+print(dist['B'])  # 5.0
+```

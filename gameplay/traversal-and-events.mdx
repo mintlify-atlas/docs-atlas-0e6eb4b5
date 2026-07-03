@@ -1,0 +1,93 @@
+---
+title: "Donkey Traversal Events and Status Updates"
+sidebarTitle: "Traversal & Events"
+description: "The donkey travels star-to-star, eats when health is low, and researches each stop. Learn traversal events, status bar updates, and blocked-edge decisions."
+---
+
+Once a path is computed and `GameView` opens, `DVController` (the `DonkeyViewController`) orchestrates the entire journey — walking the computed path step by step, triggering eating and research at each star, handling blocked edges, and updating every status bar in real time. The controller is attached to a `ViewDonkey` widget that visually repositions the donkey sprite on the graph canvas as it travels.
+
+## Journey Flow
+
+<Steps>
+  <Step title="Journey starts">
+    `ViewDonkey.walk_road()` calls `DVController.walk_road(road, vertex_index=1)`. Because `journey_started` is `False` on the first call, a **"Starting journey"** toast is displayed and `journey_started` is set to `True`. The actual first move is delayed by **3.5 seconds** via `arcade.schedule_once`.
+  </Step>
+  <Step title="Travel to the next star">
+    Before moving, the controller calls `donkey.get_travel_cost(distance)` and checks whether `energy_donkey` and `grass_stored` are sufficient for the trip. If either resource falls short, the respective value is zeroed out and death is triggered immediately — no partial travel occurs.
+  </Step>
+  <Step title="Blocked edge check">
+    The edge from the previous star to the current star is inspected for `"blocked": True` in the connection data. If blocked, a `DialogComponent` appears asking:
+
+    ```
+    "Path {from} -> {to} blocked. Unblock?"
+    ```
+
+    - **YES** (`dialog_closed_status = True`): `graph_controller.toggle_edge(from, to)` is called, a toast confirms the unblock, and traversal resumes after 2.6 seconds.
+    - **NO** (`dialog_closed_status = False`): `graph_controller.get_shortest_path(from_label, end)` recalculates a detour; the donkey follows the new path after 3.2 seconds.
+  </Step>
+  <Step title="Arrival at star">
+    `donkey.travel(distance)` is called, consuming energy and grass proportional to the edge weight. All five status bars are updated **immediately** after the call. If `travel_result.ok` is `False` or the donkey is dead post-travel, death handling kicks in.
+  </Step>
+  <Step title="Eating">
+    After a 1.5-second delay, `_process_star_activities()` checks `donkey.can_eat()` (true when health is below 50% and above 0%). If the donkey can eat, `donkey.eat_at_star(star_data)` is called — consuming grass and recovering energy — and the status bars are updated. The next phase starts after `star_data['timeToEat']` seconds (default 3).
+  </Step>
+  <Step title="Research">
+    `_start_research()` calls `donkey.research_at_star(star_data)`, which consumes energy and applies health and age effects specific to the star. Status bars update immediately. If `research_result.ok` is `True`, the visit finishes after `star_data['researchTime']` seconds (default 2); otherwise an error toast is shown instead.
+  </Step>
+  <Step title="Move to next star">
+    `_finish_star_visit()` waits a further **1.0 second**, then calls `walk_road(road, vertex_index + 1)` to begin the cycle again for the next star in the path.
+  </Step>
+  <Step title="Journey complete">
+    When `vertex_index >= len(road)`, no more stars remain. A **"Journey completed successfully"** toast is shown with a 4-second display duration and the traversal loop ends naturally.
+  </Step>
+</Steps>
+
+<Note>
+  Every phase uses `arcade.schedule_once()` with delays ranging from 1.0 to 3.5 seconds. These scheduled callbacks make the traversal feel animated and readable rather than resolving instantly. Do not close the window or switch views while a scheduled callback is pending, as it will still fire.
+</Note>
+
+## Status Bars
+
+Five widget keys in `view.layout.widgets` are updated after every travel, eat, and research event. The controller writes to each widget's `value_label` property and calls `trigger_render()` to force an immediate visual refresh:
+
+| Widget key | Displayed value | Source property |
+|---|---|---|
+| `bar_life` | Health percentage (e.g. `"87.5%"`) | `donkey.get_health_percent()` |
+| `bar_energy` | Energy percentage (e.g. `"62.3%"`) | `donkey.energy_donkey` |
+| `bar_grass` | Grass in kilograms (e.g. `"214.0kg"`) | `donkey.grass_stored` |
+| `bar_age` | Age in years (e.g. `"13 yrs"`) | `donkey.age` |
+| `bar_healthStatus` | Health state text | `donkey.health_status.text` |
+
+The five possible health state strings mapped by `_health_text_to_percent()` are: **Excellent** (100%), **Good** (75%), **Bad** (50%), **Dying** (25%), and **Dead** (0%).
+
+## Edge Blocking
+
+In **Dijkstra mode only**, clicking any visible edge in `GraphView` calls `graph_controller.toggle_edge(from_label, to_label)` and posts a toast message confirming the change. The `on_mouse_press` handler in `GameView` checks `main_runner.current_mode` before acting:
+
+```python
+current_mode = getattr(self.main_runner, 'current_mode', None)
+if current_mode != "dijkstra":
+    return  # click ignored in longest-path mode
+```
+
+Edge colours convey state at a glance:
+- **Red** — blocked, the donkey cannot pass without a dialog decision
+- **White** — passable, normal traversal
+- **Yellow** — highlighted as part of the currently active path
+
+When the donkey encounters a blocked edge mid-journey, the same `toggle_edge` mechanism is available through the "Unblock?" dialog, giving the player the choice to clear the obstacle or reroute.
+
+## Death Handling
+
+If `donkey.is_dead()` returns `True` at any point — before travel, after travel, after eating, or after research — `_handle_death()` is called:
+
+1. `_update_status_bars()` is called one final time so all bars reflect the terminal state.
+2. If `donkey_death.wav` was loaded successfully at startup, `arcade.play_sound(self.death_sound)` plays it.
+3. `donkey.get_death_cause()` returns a dict with `cause`, `energy`, `health`, `age`, and `grass`.
+4. A **10-second toast** is shown with the full death report:
+
+```
+💀 DONKEY DIED | {cause} | Energy: {energy:.1f}% | Health: {health:.1f}% | Age: {age} yrs | Grass: {grass:.1f}kg
+```
+
+5. `journey_started` is set to `False`, halting any further `walk_road` calls. No additional `arcade.schedule_once` callbacks for traversal will proceed after this point.
